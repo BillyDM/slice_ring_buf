@@ -1,8 +1,15 @@
 [package]
 name = "slice_ring_buf"
 version = "0.1.0"
-authors = ["Billy Messenger <BillyDM@protonmail.com>"]
+authors = ["Billy Messenger <https://github.com/BillyDM>"]
+license = "MIT"
+keywords = ["ring", "circular", "buffer"]
+categories = ["data-structures"]
 edition = "2018"
+description = "A fast ring buffer implementation optimized for working with slices"
+repository = "https://github.com/BillyDM/slice_ring_buf"
+documentation = "https://docs.rs/slice_ring_buf"
+readme = "README.md"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
