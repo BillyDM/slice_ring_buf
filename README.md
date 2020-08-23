@@ -55,9 +55,9 @@ rb[1] = 1;
 rb[2] = 2;
 rb[3] = 3;
 
-// Wrap when reading/writing outside of bounds. Performance
-// will be limited by the modulo (remainder) operation on
-// an `isize` value.
+// Wrap when reading/writing outside of bounds.
+// Performance will be limited by the modulo (remainder)
+// operation on an `isize` value.
 assert_eq!(rb[-1], 3);
 assert_eq!(rb[10], 2);
 
