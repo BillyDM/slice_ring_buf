@@ -4,7 +4,7 @@
 [![Crates.io](https://img.shields.io/crates/v/slice_ring_buf.svg)](https://crates.io/crates/slice_ring_buf)
 [![License](https://img.shields.io/crates/l/slice_ring_buf.svg)](https://github.com/BillyDM/slice_ring_buf/blob/master/LICENSE)
 
-A fast ring buffer implementation written in Rust. Copies/reads with slices are implemented with memcpy.
+A fast ring buffer implementation written in Rust, optimized for working with slices. Copies/reads with slices are implemented with memcpy.
 
 This crate has no consumer/producer logic, and is meant to be used as a raw data structure or a base for other data structures.
 
@@ -23,7 +23,6 @@ use slice_ring_buf::{SliceRB, SliceRbRef};
 // Create a ring buffer with type u32. The data will be
 // initialized with the default value (0 in this case).
 let mut rb = SliceRB::<u32>::from_len(4);
-assert_eq!(rb.capacity(), 4);
 
 // Memcpy data from a slice into the ring buffer at
 // arbitrary `isize` indexes. Earlier data will not be

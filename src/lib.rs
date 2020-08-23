@@ -1,4 +1,4 @@
-//! A fast ring buffer implementation written in Rust.
+//! A fast ring buffer implementation written in Rust, optimized for working with slices.
 //! Copies/reads with slices are implemented with memcpy.
 //!
 //! This crate has no consumer/producer logic, and is meant to be used as a raw data structure
@@ -9,7 +9,7 @@
 //! modulo (remainder) operation on an `isize` value. If your use case needs better indexing
 //! performance at the cost of possibly larger buffer sizes, and does not need the buffer's
 //! length to be something other than a power of 2, then take a look at my crate
-//! `bit_mask_ring_buf`: https://crates.io/crates/bit_mask_ring_buf.
+//! `bit_mask_ring_buf`: https://crates.io/crates/bit_mask_ring_buf
 //!
 //! ## Installation
 //! Add `slice_ring_buf` as a dependency in your `Cargo.toml`:
@@ -24,7 +24,6 @@
 //! // Create a ring buffer with type u32. The data will be
 //! // initialized with the default value (0 in this case).
 //! let mut rb = SliceRB::<u32>::from_len(4);
-//! assert_eq!(rb.capacity(), 4);
 //!
 //! // Memcpy data from a slice into the ring buffer at arbitrary
 //! // `isize` indexes. Earlier data will not be copied if it will
