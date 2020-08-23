@@ -25,39 +25,43 @@ use slice_ring_buf::{SliceRB, SliceRbRef};
 let mut rb = SliceRB::<u32>::from_len(4);
 assert_eq!(rb.capacity(), 4);
 
-// Memcpy data from a slice into the ring buffer at arbitrary
-// `isize` indexes. Earlier data will not be copied if it will
-// be overwritten by newer data, avoiding unecessary memcpy's.
-// The correct placement of the newer data will still be preserved.
+// Memcpy data from a slice into the ring buffer at
+// arbitrary `isize` indexes. Earlier data will not be
+// copied if it will be overwritten by newer data,
+// avoiding unecessary memcpy's. The correct placement
+// of the newer data will still be preserved.
 rb.write_latest(&[0, 2, 3, 4, 1], 0);
 assert_eq!(rb[0], 1);
 assert_eq!(rb[1], 2);
 assert_eq!(rb[2], 3);
 assert_eq!(rb[3], 4);
 
-// Memcpy into slices at arbitrary `isize` indexes and length
+// Memcpy into slices at arbitrary `isize` indexes
+// and length.
 let mut read_buffer = [0u32; 7];
 rb.read_into(&mut read_buffer, 2);
 assert_eq!(read_buffer, [3, 4, 1, 2, 3, 4, 1]);
 
-// Read/write by retrieving slices directly
+// Read/write by retrieving slices directly.
 let (s1, s2) = rb.as_slices_len(1, 4);
 assert_eq!(s1, &[2, 3, 4]);
 assert_eq!(s2, &[1]);
 
-// Read/write to buffer by indexing. Performance will be limited
-// by the modulo (remainder) operation on an isize value.
+// Read/write to buffer by indexing. Performance will be
+// limited by the modulo (remainder) operation on an
+// `isize` value.
 rb[0] = 0;
 rb[1] = 1;
 rb[2] = 2;
 rb[3] = 3;
 
-// Wrap when reading/writing outside of bounds. Performance will be
-// limited by the modulo (remainder) operation on an isize value.
+// Wrap when reading/writing outside of bounds. Performance
+// will be limited by the modulo (remainder) operation on
+// an `isize` value.
 assert_eq!(rb[-1], 3);
 assert_eq!(rb[10], 2);
 
-// Aligned/stack data may also be used
+// Aligned/stack data may also be used.
 let mut stack_data = [0u32, 1, 2, 3];
 let mut rb_ref = SliceRbRef::new(&mut stack_data);
 rb_ref[-4] = 5;

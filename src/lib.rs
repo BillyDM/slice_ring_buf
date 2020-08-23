@@ -36,12 +36,12 @@
 //! assert_eq!(rb[2], 3);
 //! assert_eq!(rb[3], 4);
 //!
-//! // Memcpy into slices at arbitrary `isize` indexes and length
+//! // Memcpy into slices at arbitrary `isize` indexes and length.
 //! let mut read_buffer = [0u32; 7];
 //! rb.read_into(&mut read_buffer, 2);
 //! assert_eq!(read_buffer, [3, 4, 1, 2, 3, 4, 1]);
 //!
-//! // Read/write by retrieving slices directly
+//! // Read/write by retrieving slices directly.
 //! let (s1, s2) = rb.as_slices_len(1, 4);
 //! assert_eq!(s1, &[2, 3, 4]);
 //! assert_eq!(s2, &[1]);
@@ -58,7 +58,7 @@
 //! assert_eq!(rb[-1], 3);
 //! assert_eq!(rb[10], 2);
 //!
-//! // Aligned/stack data may also be used
+//! // Aligned/stack data may also be used.
 //! let mut stack_data = [0u32, 1, 2, 3];
 //! let mut rb_ref = SliceRbRef::new(&mut stack_data);
 //! rb_ref[-4] = 5;
