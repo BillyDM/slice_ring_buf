@@ -7,8 +7,8 @@
 //! This is optimized for manipulating data in bulk with slices. The performance
 //! of indexing individual elements one at a time will be limited by the performance of the
 //! modulo (remainder) operation on an `isize` value. If your use case needs better indexing
-//! performance at the cost of possibly larger buffer sizes, and does not need the buffer to
-//! be an exact length that is not a power of 2, then take a look at my crate
+//! performance at the cost of possibly larger buffer sizes, and does not need the buffer's
+//! length to be something other than a power of 2, then take a look at my crate
 //! `bit_mask_ring_buf`: https://crates.io/crates/bit_mask_ring_buf.
 //!
 //! ## Installation
