@@ -1,15 +1,15 @@
 //! A fast ring buffer implementation written in Rust.
 //! Copies/reads with slices are implemented with memcpy.
 //!
+//! This crate has no consumer/producer logic, and is meant to be used as a raw data structure
+//! or a base for other data structures.
+//!
 //! This is optimized for manipulating data in bulk with slices. The performance
 //! of indexing individual elements one at a time will be limited by the performance of the
 //! modulo (remainder) operation on an `isize` value. If your use case needs better indexing
-//! performance at the cost of possibly larger buffer sizes, and is not dependent on the buffer
-//! being an exact length, then take a look at my crate
+//! performance at the cost of possibly larger buffer sizes, and does not need the buffer to
+//! be an exact length that is not a power of 2, then take a look at my crate
 //! `bit_mask_ring_buf`: https://crates.io/crates/bit_mask_ring_buf.
-//!
-//! This crate has no consumer/producer logic, and is meant to be used as a raw data structure
-//! or a base for other data structures.
 //!
 //! ## Installation
 //! Add `slice_ring_buf` as a dependency in your `Cargo.toml`:
