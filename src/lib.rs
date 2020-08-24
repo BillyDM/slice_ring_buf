@@ -82,6 +82,20 @@ impl<T: Copy + Clone + Default> SliceRB<T> {
     ///
     /// * `len` - The length of the ring buffer.
     ///
+    /// # Example
+    ///
+    /// ```
+    /// use slice_ring_buf::SliceRB;
+    ///
+    /// let rb = SliceRB::<u32>::from_len(3);
+    ///
+    /// assert_eq!(rb.len(), 3);
+    ///
+    /// assert_eq!(rb[0], 0);
+    /// assert_eq!(rb[1], 0);
+    /// assert_eq!(rb[2], 0);
+    /// ```
+    ///
     /// # Panics
     ///
     /// * This will panic if `len = 0`.
@@ -107,6 +121,17 @@ impl<T: Copy + Clone + Default> SliceRB<T> {
     /// this you assume the responsibility of making sure any data is initialized
     /// before it is read.
     ///
+    /// # Example
+    ///
+    /// ```
+    /// use slice_ring_buf::SliceRB;
+    ///
+    /// unsafe {
+    ///     let rb = SliceRB::<u32>::from_len(3);
+    ///     assert_eq!(rb.len(), 3);
+    /// }
+    /// ```
+    ///
     /// # Panics
     ///
     /// * This will panic if `len = 0`.
@@ -125,6 +150,25 @@ impl<T: Copy + Clone + Default> SliceRB<T> {
     }
 
     /// Sets the length of the ring buffer while clearing all values to the default value.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use slice_ring_buf::SliceRB;
+    ///
+    /// let mut rb = SliceRB::<u32>::from_len(2);
+    /// rb[0] = 1;
+    /// rb[1] = 2;
+    ///
+    /// rb.clear_set_len(4);
+    ///
+    /// assert_eq!(rb.len(), 4);
+    ///
+    /// assert_eq!(rb[0], 0);
+    /// assert_eq!(rb[1], 0);
+    /// assert_eq!(rb[2], 0);
+    /// assert_eq!(rb[3], 0);
+    /// ```
     ///
     /// # Panics
     ///
@@ -145,6 +189,25 @@ impl<T: Copy + Clone + Default> SliceRB<T> {
     /// * If `len` is larger than the current length, then all newly
     /// allocated elements appended to the end will be initialized with the
     /// default value.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use slice_ring_buf::SliceRB;
+    ///
+    /// let mut rb = SliceRB::<u32>::from_len(2);
+    /// rb[0] = 1;
+    /// rb[1] = 2;
+    ///
+    /// rb.set_len(4);
+    ///
+    /// assert_eq!(rb.len(), 4);
+    ///
+    /// assert_eq!(rb[0], 1);
+    /// assert_eq!(rb[1], 2);
+    /// assert_eq!(rb[2], 0);
+    /// assert_eq!(rb[3], 0);
+    /// ```
     ///
     /// # Panics
     ///
@@ -170,6 +233,25 @@ impl<T: Copy + Clone + Default> SliceRB<T> {
     /// this you assume the responsibility of making sure any data is initialized
     /// before it is read.
     ///
+    /// # Example
+    ///
+    /// ```
+    /// use slice_ring_buf::SliceRB;
+    ///
+    /// let mut rb = SliceRB::<u32>::from_len(2);
+    /// rb[0] = 1;
+    /// rb[1] = 2;
+    ///
+    /// unsafe {
+    ///     rb.set_len_uninit(4);
+    ///
+    ///     assert_eq!(rb.len(), 4);
+    ///
+    ///     assert_eq!(rb[0], 1);
+    ///     assert_eq!(rb[1], 2);
+    /// }
+    /// ```
+    ///
     /// # Panics
     ///
     /// * This will panic if `len = 0`.
@@ -191,6 +273,21 @@ impl<T: Copy + Clone + Default> SliceRB<T> {
     }
 
     /// Clears all values in the ring buffer to the default value.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use slice_ring_buf::SliceRB;
+    ///
+    /// let mut rb = SliceRB::<u32>::from_len(2);
+    /// rb[0] = 1;
+    /// rb[1] = 2;
+    ///
+    /// rb.clear();
+    ///
+    /// assert_eq!(rb[0], 0);
+    /// assert_eq!(rb[1], 0);
+    /// ```
     pub fn clear(&mut self) {
         let len = self.vec.len();
         self.vec.clear();
@@ -206,6 +303,26 @@ impl<T: Copy + Clone + Default> SliceRB<T> {
     /// * The second slice is the second contiguous chunk of data. This may
     /// or may not be empty depending if the buffer needed to wrap around to the beginning of
     /// its internal memory layout.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use slice_ring_buf::SliceRB;
+    ///
+    /// let mut rb = SliceRB::<u32>::from_len(4);
+    /// rb[0] = 1;
+    /// rb[1] = 2;
+    /// rb[2] = 3;
+    /// rb[3] = 4;
+    ///
+    /// let (s1, s2) = rb.as_slices(-4);
+    /// assert_eq!(s1, &[1, 2, 3, 4]);
+    /// assert_eq!(s2, &[]);
+    ///
+    /// let (s1, s2) = rb.as_slices(3);
+    /// assert_eq!(s1, &[4]);
+    /// assert_eq!(s2, &[1, 2, 3]);
+    /// ```
     pub fn as_slices(&self, start: isize) -> (&[T], &[T]) {
         let start = self.constrain(start) as usize;
 
@@ -230,7 +347,7 @@ impl<T: Copy + Clone + Default> SliceRB<T> {
     ///
     /// * `start` - The starting index
     /// * `len` - The length of data to read. If `len` is greater than the
-    /// capacity of the ring buffer, then that capacity will be used instead.
+    /// length of the ring buffer, then that length will be used instead.
     ///
     /// # Returns
     ///
@@ -238,6 +355,26 @@ impl<T: Copy + Clone + Default> SliceRB<T> {
     /// * The second slice is the second contiguous chunk of data. This may
     /// or may not be empty depending if the buffer needed to wrap around to the beginning of
     /// its internal memory layout.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use slice_ring_buf::SliceRB;
+    ///
+    /// let mut rb = SliceRB::<u32>::from_len(4);
+    /// rb[0] = 1;
+    /// rb[1] = 2;
+    /// rb[2] = 3;
+    /// rb[3] = 4;
+    ///
+    /// let (s1, s2) = rb.as_slices_len(-4, 3);
+    /// assert_eq!(s1, &[1, 2, 3]);
+    /// assert_eq!(s2, &[]);
+    ///
+    /// let (s1, s2) = rb.as_slices_len(3, 5);
+    /// assert_eq!(s1, &[4]);
+    /// assert_eq!(s2, &[1, 2, 3]);
+    /// ```
     pub fn as_slices_len(&self, start: isize, len: usize) -> (&[T], &[T]) {
         let start = self.constrain(start) as usize;
 
@@ -276,6 +413,26 @@ impl<T: Copy + Clone + Default> SliceRB<T> {
     /// * The second slice is the second contiguous chunk of data. This may
     /// or may not be empty depending if the buffer needed to wrap around to the beginning of
     /// its internal memory layout.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use slice_ring_buf::SliceRB;
+    ///
+    /// let mut rb = SliceRB::<u32>::from_len(4);
+    /// rb[0] = 1;
+    /// rb[1] = 2;
+    /// rb[2] = 3;
+    /// rb[3] = 4;
+    ///
+    /// let (s1, s2) = rb.as_mut_slices(-4);
+    /// assert_eq!(s1, &mut [1, 2, 3, 4]);
+    /// assert_eq!(s2, &mut []);
+    ///
+    /// let (s1, s2) = rb.as_mut_slices(3);
+    /// assert_eq!(s1, &mut [4]);
+    /// assert_eq!(s2, &mut [1, 2, 3]);
+    /// ```
     pub fn as_mut_slices(&mut self, start: isize) -> (&mut [T], &mut [T]) {
         let start = self.constrain(start) as usize;
 
@@ -303,7 +460,7 @@ impl<T: Copy + Clone + Default> SliceRB<T> {
     ///
     /// * `start` - The starting index
     /// * `len` - The length of data to read. If `len` is greater than the
-    /// capacity of the ring buffer, then that capacity will be used instead.
+    /// length of the ring buffer, then that length will be used instead.
     ///
     /// # Returns
     ///
@@ -311,6 +468,26 @@ impl<T: Copy + Clone + Default> SliceRB<T> {
     /// * The second slice is the second contiguous chunk of data. This may
     /// or may not be empty depending if the buffer needed to wrap around to the beginning of
     /// its internal memory layout.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use slice_ring_buf::SliceRB;
+    ///
+    /// let mut rb = SliceRB::<u32>::from_len(4);
+    /// rb[0] = 1;
+    /// rb[1] = 2;
+    /// rb[2] = 3;
+    /// rb[3] = 4;
+    ///
+    /// let (s1, s2) = rb.as_mut_slices_len(-4, 3);
+    /// assert_eq!(s1, &mut [1, 2, 3]);
+    /// assert_eq!(s2, &mut []);
+    ///
+    /// let (s1, s2) = rb.as_mut_slices_len(3, 5);
+    /// assert_eq!(s1, &mut [4]);
+    /// assert_eq!(s2, &mut [1, 2, 3]);
+    /// ```
     pub fn as_mut_slices_len(&mut self, start: isize, len: usize) -> (&mut [T], &mut [T]) {
         let start = self.constrain(start) as usize;
 
@@ -345,11 +522,31 @@ impl<T: Copy + Clone + Default> SliceRB<T> {
 
     /// Copies the data from the ring buffer starting from the index `start`
     /// into the given slice. If the length of `slice` is larger than the
-    /// capacity of the ring buffer, then the data will be reapeated until
+    /// length of the ring buffer, then the data will be reapeated until
     /// the given slice is filled.
     ///
     /// * `slice` - This slice to copy the data into.
     /// * `start` - The index of the ring buffer to start copying from.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use slice_ring_buf::SliceRB;
+    ///
+    /// let mut rb = SliceRB::<u32>::from_len(4);
+    /// rb[0] = 1;
+    /// rb[1] = 2;
+    /// rb[2] = 3;
+    /// rb[3] = 4;
+    ///
+    /// let mut read_buf = [0u32; 3];
+    /// rb.read_into(&mut read_buf[..], -3);
+    /// assert_eq!(read_buf, [2, 3, 4]);
+    ///
+    /// let mut read_buf = [0u32; 9];
+    /// rb.read_into(&mut read_buf[..], 2);
+    /// assert_eq!(read_buf, [3, 4, 1, 2, 3, 4, 1, 2, 3]);
+    /// ```
     pub fn read_into(&self, slice: &mut [T], start: isize) {
         let start = self.constrain(start) as usize;
 
@@ -391,11 +588,35 @@ impl<T: Copy + Clone + Default> SliceRB<T> {
     }
 
     /// Copies data from the given slice into the ring buffer starting from
-    /// the index `start`. If the length of `slice` is larger than the
-    /// capacity of the ring buffer, then only the latest data will be copied.
+    /// the index `start`.
+    ///
+    /// Earlier data will not be copied if it will be
+    /// overwritten by newer data, avoiding unecessary memcpy's. The correct
+    /// placement of the newer data will still be preserved.
     ///
     /// * `slice` - This slice to copy data from.
-    /// * `start` - The index of the ring buffer to start copying from.
+    /// * `start` - The index of the ring buffer to start copying from.///
+    /// # Example
+    ///
+    /// ```
+    /// use slice_ring_buf::SliceRB;
+    ///
+    /// let mut rb = SliceRB::<u32>::from_len(4);
+    ///
+    /// let input = [1u32, 2, 3];
+    /// rb.write_latest(&input[..], -3);
+    /// assert_eq!(rb[0], 0);
+    /// assert_eq!(rb[1], 1);
+    /// assert_eq!(rb[2], 2);
+    /// assert_eq!(rb[3], 3);
+    ///
+    /// let input = [1u32, 2, 3, 4, 5, 6, 7, 8, 9];
+    /// rb.write_latest(&input[..], 2);
+    /// assert_eq!(rb[0], 7);
+    /// assert_eq!(rb[1], 8);
+    /// assert_eq!(rb[2], 9);
+    /// assert_eq!(rb[3], 6);
+    /// ```
     pub fn write_latest(&mut self, slice: &[T], start: isize) {
         // If slice is longer than self.vec, retreive only the latest portion
         let (slice, start_i) = if slice.len() > self.vec.len() {
@@ -444,14 +665,44 @@ impl<T: Copy + Clone + Default> SliceRB<T> {
 
     /// Copies data from two given slices into the ring buffer starting from
     /// the index `start`. The `first` slice will be copied first then `second`
-    /// will be copied next. If the length of the slices is larger than the
-    /// capacity of the ring buffer, then only the latest data will be copied.
-    /// Data in the first slice will not be copied if it will be overwritten by
-    /// the second slice, reducing the amount of unnecessary copying.
+    /// will be copied next.
+    ///
+    /// Earlier data will not be copied if it will be
+    /// overwritten by newer data, avoiding unecessary memcpy's. The correct
+    /// placement of the newer data will still be preserved.
     ///
     /// * `first` - This first slice to copy data from.
     /// * `second` - This second slice to copy data from.
     /// * `start` - The index of the ring buffer to start copying from.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use slice_ring_buf::SliceRB;
+    ///
+    /// let mut input_rb = SliceRB::<u32>::from_len(4);
+    /// input_rb[0] = 1;
+    /// input_rb[1] = 2;
+    /// input_rb[2] = 3;
+    /// input_rb[3] = 4;
+    ///
+    /// let mut output_rb = SliceRB::<u32>::from_len(4);
+    /// // s1 == &[1, 2], s2 == &[]
+    /// let (s1, s2) = input_rb.as_slices_len(0, 2);
+    /// output_rb.write_latest_2(s1, s2, -3);
+    /// assert_eq!(output_rb[0], 0);
+    /// assert_eq!(output_rb[1], 1);
+    /// assert_eq!(output_rb[2], 2);
+    /// assert_eq!(output_rb[3], 0);
+    ///
+    /// let mut output_rb = SliceRB::<u32>::from_len(2);
+    /// // s1 == &[4],  s2 == &[1, 2, 3]
+    /// let (s1, s2) = input_rb.as_slices_len(3, 4);
+    /// // rb[1] = 4  ->  rb[0] = 1  ->  rb[1] = 2  ->  rb[0] = 3
+    /// output_rb.write_latest_2(s1, s2, 1);
+    /// assert_eq!(output_rb[0], 3);
+    /// assert_eq!(output_rb[1], 2);
+    /// ```
     pub fn write_latest_2(&mut self, first: &[T], second: &[T], start: isize) {
         if first.len() + second.len() <= self.vec.len() {
             // All data from both slices need to be copied.
@@ -470,18 +721,47 @@ impl<T: Copy + Clone + Default> SliceRB<T> {
     }
 
     /// Returns the length of the ring buffer.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use slice_ring_buf::SliceRB;
+    /// let rb = SliceRB::<u32>::from_len(4);
+    ///
+    /// assert_eq!(rb.len(), 4);
+    /// ```
     pub fn len(&self) -> usize {
         self.vec.len()
     }
 
     /// Returns the allocated capacity of the internal vector.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use slice_ring_buf::SliceRB;
+    /// let rb = SliceRB::<u32>::from_len(4);
+    ///
+    /// assert!(rb.capacity() >= 4);
+    /// ```
     pub fn capacity(&self) -> usize {
         self.vec.capacity()
     }
 
     /// Returns the actual index of the ring buffer from the given
     /// `i` index. Performance will be limited by the modulo (remainder) operation
-    /// on an `isize` value.
+    /// on an `isize` value.///
+    /// # Example
+    ///
+    /// ```
+    /// use slice_ring_buf::SliceRB;
+    /// let rb = SliceRB::<u32>::from_len(4);
+    ///
+    /// assert_eq!(rb.constrain(2), 2);
+    /// assert_eq!(rb.constrain(4), 0);
+    /// assert_eq!(rb.constrain(-3), 1);
+    /// assert_eq!(rb.constrain(7), 3);
+    /// ```
     #[inline]
     pub fn constrain(&self, i: isize) -> isize {
         let rem = i % self.len_isize;
