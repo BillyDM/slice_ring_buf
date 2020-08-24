@@ -9,7 +9,7 @@
 //! modulo (remainder) operation on an `isize` value. If your use case needs better indexing
 //! performance at the cost of possibly larger buffer sizes, and does not need the buffer's
 //! length to be something other than a power of 2, then take a look at my crate
-//! `bit_mask_ring_buf`: https://crates.io/crates/bit_mask_ring_buf
+//! [`bit_mask_ring_buf`].
 //!
 //! ## Installation
 //! Add `slice_ring_buf` as a dependency in your `Cargo.toml`:
@@ -65,6 +65,8 @@
 //! assert_eq!(s1, &[5, 1, 2]);
 //! assert_eq!(s2, &[]);
 //! ```
+//!
+//! [`bit_mask_ring_buf`]: https://crates.io/crates/bit_mask_ring_buf
 
 mod referenced;
 pub use referenced::SliceRbRef;
