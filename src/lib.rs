@@ -14,7 +14,7 @@
 //! ## Installation
 //! Add `slice_ring_buf` as a dependency in your `Cargo.toml`:
 //! ```toml
-//! slice_ring_buf = 0.1
+//! slice_ring_buf = 0.2
 //! ```
 //!
 //! ## Example
