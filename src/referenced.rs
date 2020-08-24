@@ -89,6 +89,13 @@ impl<'a, T: Copy + Clone + Default> SliceRbRef<'a, T> {
     /// or may not be empty depending if the buffer needed to wrap around to the beginning of
     /// its internal memory layout.
     ///
+    /// # Performance
+    ///
+    /// Prefer to use this to manipulate data in bulk over reading individual elements one
+    /// at a time. If you need to index multiple elements one at a time, prefer to use
+    /// `SliceRbRef::at(&mut i)` over `SliceRbRef[i]` to reduce the number of
+    /// modulo operations to perform.
+    ///
     /// # Example
     ///
     /// ```
@@ -136,6 +143,13 @@ impl<'a, T: Copy + Clone + Default> SliceRbRef<'a, T> {
     /// * The second slice is the second contiguous chunk of data. This may
     /// or may not be empty depending if the buffer needed to wrap around to the beginning of
     /// its internal memory layout.
+    ///
+    /// # Performance
+    ///
+    /// Prefer to use this to manipulate data in bulk over reading individual elements one
+    /// at a time. If you need to index multiple elements one at a time, prefer to use
+    /// `SliceRbRef::at(&mut i)` over `SliceRbRef[i]` to reduce the number of
+    /// modulo operations to perform.
     ///
     /// # Example
     ///
@@ -191,6 +205,13 @@ impl<'a, T: Copy + Clone + Default> SliceRbRef<'a, T> {
     /// or may not be empty depending if the buffer needed to wrap around to the beginning of
     /// its internal memory layout.
     ///
+    /// # Performance
+    ///
+    /// Prefer to use this to manipulate data in bulk over reading individual elements one
+    /// at a time. If you need to index multiple elements one at a time, prefer to use
+    /// `SliceRbRef::at(&mut i)` over `SliceRbRef[i]` to reduce the number of
+    /// modulo operations to perform.
+    ///
     /// # Example
     ///
     /// ```
@@ -241,6 +262,13 @@ impl<'a, T: Copy + Clone + Default> SliceRbRef<'a, T> {
     /// * The second slice is the second contiguous chunk of data. This may
     /// or may not be empty depending if the buffer needed to wrap around to the beginning of
     /// its internal memory layout.
+    ///
+    /// # Performance
+    ///
+    /// Prefer to use this to manipulate data in bulk over reading individual elements one
+    /// at a time. If you need to index multiple elements one at a time, prefer to use
+    /// `SliceRbRef::at(&mut i)` over `SliceRbRef[i]` to reduce the number of
+    /// modulo operations to perform.
     ///
     /// # Example
     ///
@@ -296,6 +324,13 @@ impl<'a, T: Copy + Clone + Default> SliceRbRef<'a, T> {
     ///
     /// * `slice` - This slice to copy the data into.
     /// * `start` - The index of the ring buffer to start copying from.
+    ///
+    /// # Performance
+    ///
+    /// Prefer to use this to manipulate data in bulk over reading individual elements one
+    /// at a time. If you need to index multiple elements one at a time, prefer to use
+    /// `SliceRbRef::at(&mut i)` over `SliceRbRef[i]` to reduce the number of
+    /// modulo operations to perform.
     ///
     /// # Example
     ///
@@ -360,6 +395,13 @@ impl<'a, T: Copy + Clone + Default> SliceRbRef<'a, T> {
     ///
     /// * `slice` - This slice to copy data from.
     /// * `start` - The index of the ring buffer to start copying from.
+    ///
+    /// # Performance
+    ///
+    /// Prefer to use this to manipulate data in bulk over reading individual elements one
+    /// at a time. If you need to index multiple elements one at a time, prefer to use
+    /// `SliceRbRef::at(&mut i)` over `SliceRbRef[i]` to reduce the number of
+    /// modulo operations to perform.
     ///
     /// # Example
     ///
@@ -439,6 +481,13 @@ impl<'a, T: Copy + Clone + Default> SliceRbRef<'a, T> {
     /// * `second` - This second slice to copy data from.
     /// * `start` - The index of the ring buffer to start copying from.
     ///
+    /// # Performance
+    ///
+    /// Prefer to use this to manipulate data in bulk over reading individual elements one
+    /// at a time. If you need to index multiple elements one at a time, prefer to use
+    /// `SliceRbRef::at(&mut i)` over `SliceRbRef[i]` to reduce the number of
+    /// modulo operations to perform.
+    ///
     /// # Example
     ///
     /// ```
@@ -502,8 +551,19 @@ impl<'a, T: Copy + Clone + Default> SliceRbRef<'a, T> {
     }
 
     /// Returns the actual index of the ring buffer from the given
-    /// `i` index. Performance will be limited by the modulo (remainder) operation
-    /// on an `isize` value.
+    /// `i` index.
+    ///
+    /// * First, a bounds check will be performed. If it is within bounds,
+    /// then it is simply returned.
+    /// * If it is not in bounds, then performance will
+    /// be limited by the modulo (remainder) operation on an `isize` value.
+    ///
+    /// # Performance
+    ///
+    /// Prefer to manipulate data in bulk with methods that return slices. If you
+    /// need to index multiple elements one at a time, prefer to use
+    /// `SliceRbRef::at(&mut i)` over `SliceRbRef[i]` to reduce the number of
+    /// modulo operations to perform.
     ///
     /// # Example
     ///
@@ -525,6 +585,161 @@ impl<'a, T: Copy + Clone + Default> SliceRbRef<'a, T> {
         } else {
             rem
         }
+    }
+
+    /// Returns all the data in the buffer. The starting index will
+    /// always be `0`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use slice_ring_buf::SliceRbRef;
+    /// let mut data = [1u32, 2, 3, 4];
+    /// let mut rb = SliceRbRef::new(&mut data[..]);
+    ///
+    /// let raw_data = rb.raw_data();
+    /// assert_eq!(raw_data, &[1u32, 2, 3, 4]);
+    /// ```
+    pub fn raw_data(&self) -> &[T] {
+        self.data
+    }
+
+    /// Returns all the data in the buffer as mutable. The starting
+    /// index will always be `0`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use slice_ring_buf::SliceRbRef;
+    /// let mut data = [1u32, 2, 3, 4];
+    /// let mut rb = SliceRbRef::new(&mut data[..]);
+    ///
+    /// let raw_data = rb.raw_data_mut();
+    /// assert_eq!(raw_data, &mut [1u32, 2, 3, 4]);
+    /// ```
+    pub fn raw_data_mut(&mut self) -> &mut [T] {
+        self.data
+    }
+
+    /// Returns the element at the index of type `usize`.
+    ///
+    /// Please note this does NOT wrap around. This is equivalent to
+    /// indexing a normal slice type.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use slice_ring_buf::SliceRbRef;
+    /// let mut data = [1u32, 2, 3, 4];
+    /// let mut rb = SliceRbRef::new(&mut data[..]);
+    ///
+    /// assert_eq!(*rb.raw_at(0), 1);
+    /// assert_eq!(*rb.raw_at(3), 4);
+    ///
+    /// // These will panic!
+    /// // assert_eq!(*rb.raw_at(-3), 2);
+    /// // assert_eq!(*rb.raw_at(4), 1);
+    /// ```
+    ///
+    /// # Panics
+    ///
+    /// * This will panic if `i` is out of bounds of the internal slice.
+    #[inline]
+    pub fn raw_at(&self, i: usize) -> &T {
+        &self.data[i]
+    }
+
+    /// Returns the element at the index of type `usize` as mutable.
+    ///
+    /// Please note this does NOT wrap around. This is equivalent to
+    /// indexing a normal slice type.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use slice_ring_buf::SliceRbRef;
+    /// let mut data = [0u32; 4];
+    /// let mut rb = SliceRbRef::new(&mut data[..]);
+    ///
+    /// *rb.raw_at_mut(0) = 1;
+    /// *rb.raw_at_mut(3) = 4;
+    ///
+    /// assert_eq!(rb[0], 1);
+    /// assert_eq!(rb[3], 4);
+    ///
+    /// // These will panic!
+    /// // *rb.raw_at_mut(-3) = 2;
+    /// // *rb.raw_at_mut(4) = 1;
+    /// ```
+    ///
+    /// # Panics
+    ///
+    /// * This will panic if `i` is out of bounds of the internal slice.
+    #[inline]
+    pub fn raw_at_mut(&mut self, i: usize) -> &mut T {
+        &mut self.data[i]
+    }
+
+    /// Returns the element at the index of type `usize` while also
+    /// constraining the index `i`. This is more efficient
+    /// than calling both methods individually.
+    ///
+    /// # Performance
+    ///
+    /// Prefer to manipulate data in bulk with methods that return slices. If you
+    /// need to index multiple elements one at a time, prefer to use
+    /// this over `SliceRbRef[i]` to reduce the number of
+    /// modulo operations to perform.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use slice_ring_buf::SliceRbRef;
+    /// let mut data = [1u32, 2, 3, 4];
+    /// let mut rb = SliceRbRef::new(&mut data[..]);
+    ///
+    /// let mut i = -3;
+    /// assert_eq!(*rb.at(&mut i), 2);
+    /// assert_eq!(i, 1);
+    /// ```
+    #[inline]
+    pub fn at(&self, i: &mut isize) -> &T {
+        *i = self.constrain(*i);
+
+        // Safe because self.constrain() is always in range.
+        unsafe { &*self.data.as_ptr().offset(*i) }
+    }
+
+    /// Returns the element at the index of type `usize` as mutable while also
+    /// constraining the index `i`. This is more efficient
+    /// than calling both methods individually.
+    ///
+    /// # Performance
+    ///
+    /// Prefer to manipulate data in bulk with methods that return slices. If you
+    /// need to index multiple elements one at a time, prefer to use
+    /// this over `SliceRbRef[i]` to reduce the number of
+    /// modulo operations to perform.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use slice_ring_buf::SliceRbRef;
+    /// let mut data = [0u32; 4];
+    /// let mut rb = SliceRbRef::new(&mut data[..]);
+    ///
+    /// let mut i = -3;
+    /// *rb.at_mut(&mut i) = 2;
+    ///
+    /// assert_eq!(rb[1], 2);
+    /// assert_eq!(i, 1);
+    /// ```
+    #[inline]
+    pub fn at_mut(&mut self, i: &mut isize) -> &mut T {
+        *i = self.constrain(*i);
+
+        // Safe because self.constrain() is always in range.
+        unsafe { &mut *self.data.as_mut_ptr().offset(*i) }
     }
 }
 
