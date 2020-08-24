@@ -579,11 +579,15 @@ impl<'a, T: Copy + Clone + Default> SliceRbRef<'a, T> {
     /// ```
     #[inline]
     pub fn constrain(&self, i: isize) -> isize {
-        let rem = i % self.len_isize;
-        if rem < 0 {
-            rem + self.len_isize
+        if i < 0 || i >= self.len_isize {
+            let rem = i % self.len_isize;
+            if rem < 0 {
+                rem + self.len_isize
+            } else {
+                rem
+            }
         } else {
-            rem
+            i
         }
     }
 
