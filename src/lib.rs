@@ -296,6 +296,82 @@ impl<T: Copy + Clone + Default> SliceRB<T> {
         self.vec.resize(len, Default::default());
     }
 
+    /// Reserves capacity for at least `additional` more elements to be inserted
+    /// in the internal `Vec`. This is equivalant to `Vec::reserve()`.
+    ///
+    /// The collection may reserve more space to avoid frequent reallocations. After
+    /// calling reserve, capacity will be greater than or equal to self.len() + additional.
+    /// Does nothing if capacity is already sufficient.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use slice_ring_buf::SliceRB;
+    /// let mut rb = SliceRB::<u32>::from_len(2);
+    ///
+    /// rb.reserve(8);
+    ///
+    /// assert!(rb.capacity() >= 10);
+    /// ```
+    ///
+    /// # Panics
+    ///
+    /// * Panics if the new capacity overflows `usize`.
+    pub fn reserve(&mut self, additional: usize) {
+        self.vec.reserve(additional);
+    }
+
+    /// Reserves capacity for exactly `additional` more elements to be inserted
+    /// in the internal `Vec`. This is equivalant to `Vec::reserve_exact()`.
+    ///
+    /// The collection may reserve more space to avoid frequent reallocations. After
+    /// calling reserve, capacity will be greater than or equal to self.len() + additional.
+    /// Does nothing if capacity is already sufficient.
+    ///
+    /// Note that the allocator may give the collection more space than it requests. Therefore,
+    /// capacity can not be relied upon to be precisely minimal. Prefer `reserve` if future
+    /// insertions are expected.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use slice_ring_buf::SliceRB;
+    /// let mut rb = SliceRB::<u32>::from_len(2);
+    ///
+    /// rb.reserve_exact(8);
+    ///
+    /// assert!(rb.capacity() >= 10);
+    /// ```
+    ///
+    /// # Panics
+    ///
+    /// * Panics if the new capacity overflows `usize`.
+    pub fn reserve_exact(&mut self, additional: usize) {
+        self.vec.reserve_exact(additional);
+    }
+
+    /// Shrinks the capacity of the internal `Vec` as much as possible. This is equivalant to
+    /// `Vec::shrink_to_fit`.
+    ///
+    /// It will drop down as close as possible to the length but the allocator may still inform
+    /// the vector that there is space for a few more elements.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use slice_ring_buf::SliceRB;
+    /// let mut rb = SliceRB::<u32>::from_len(2);
+    ///
+    /// rb.reserve(8);
+    /// assert!(rb.capacity() >= 10);
+    ///
+    /// rb.shrink_to_fit();
+    /// assert!(rb.capacity() >= 2);
+    /// ```
+    pub fn shrink_to_fit(&mut self) {
+        self.vec.shrink_to_fit();
+    }
+
     /// Returns two slices that contain all the data in the ring buffer
     /// starting at the index `start`.
     ///
