@@ -181,6 +181,7 @@ impl<T: Copy + Clone + Default> SliceRB<T> {
 
         let mut vec = Vec::with_capacity(len);
         vec.set_len(len);
+        
         Self {
             vec,
             len_isize: len as isize,
