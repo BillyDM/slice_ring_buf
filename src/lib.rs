@@ -113,6 +113,42 @@ impl<T: Copy + Clone + Default> SliceRB<T> {
         }
     }
 
+    /// Creates a new [`SliceRB`], while reserving extra capacity for future changes
+    /// to `len`. All data from `[0..len)` will be initialized with the default value.
+    ///
+    /// * `len` - The length of the ring buffer.
+    /// * `capacity` - The allocated capacity of the ring buffer. If this is less than
+    /// `len`, then it will be ignored.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use slice_ring_buf::SliceRB;
+    ///
+    /// let rb = SliceRB::<u32>::from_len_with_capacity(3, 10);
+    ///
+    /// assert_eq!(rb.len(), 3);
+    /// assert!(rb.capacity() >= 10);
+    /// ```
+    ///
+    /// # Panics
+    ///
+    /// * This will panic if `len = 0`.
+    /// * This will panic if this tries to allocate more than `isize::MAX` bytes.
+    ///
+    /// [`SliceRB`]: struct.SliceRB.html
+    pub fn from_len_with_capacity(len: usize, capacity: usize) -> Self {
+        assert_ne!(len, 0);
+
+        let mut vec = Vec::<T>::with_capacity(std::cmp::max(len, capacity));
+        vec.resize(len, Default::default());
+
+        Self {
+            vec,
+            len_isize: len as isize,
+        }
+    }
+
     /// Creates a new [`SliceRB`] without initializing data.
     ///
     /// * `len` - The length of the ring buffer.
@@ -129,7 +165,7 @@ impl<T: Copy + Clone + Default> SliceRB<T> {
     /// use slice_ring_buf::SliceRB;
     ///
     /// unsafe {
-    ///     let rb = SliceRB::<u32>::from_len(3);
+    ///     let rb = SliceRB::<u32>::from_len_uninit(3);
     ///     assert_eq!(rb.len(), 3);
     /// }
     /// ```
@@ -144,6 +180,48 @@ impl<T: Copy + Clone + Default> SliceRB<T> {
         assert_ne!(len, 0);
 
         let mut vec = Vec::with_capacity(len);
+        vec.set_len(len);
+        Self {
+            vec,
+            len_isize: len as isize,
+        }
+    }
+
+    /// Creates a new [`SliceRB`] without initializing data, while reserving extra
+    /// capacity for future changes to `len`.
+    ///
+    /// * `len` - The length of the ring buffer.
+    /// * `capacity` - The allocated capacity of the ring buffer. If this is less than
+    /// `len`, then it will be ignored.
+    ///
+    /// # Safety
+    ///
+    /// * Undefined behavior may occur if uninitialized data is read from. By using
+    /// this you assume the responsibility of making sure any data is initialized
+    /// before it is read.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use slice_ring_buf::SliceRB;
+    ///
+    /// unsafe {
+    ///     let rb = SliceRB::<u32>::from_len_with_capacity_uninit(3, 10);
+    ///     assert_eq!(rb.len(), 3);
+    ///     assert!(rb.capacity() >= 10);
+    /// }
+    /// ```
+    ///
+    /// # Panics
+    ///
+    /// * This will panic if `len = 0`.
+    /// * This will panic if this tries to allocate more than `isize::MAX` bytes.
+    ///
+    /// [`SliceRB`]: struct.SliceRB.html
+    pub unsafe fn from_len_with_capacity_uninit(len: usize, capacity: usize) -> Self {
+        assert_ne!(len, 0);
+
+        let mut vec = Vec::with_capacity(std::cmp::max(len, capacity));
         vec.set_len(len);
         Self {
             vec,
