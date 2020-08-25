@@ -93,10 +93,7 @@ impl<'a, T: Copy + Clone + Default> SliceRbRef<'a, T> {
     ///
     /// # Performance
     ///
-    /// Prefer to use this to manipulate data in bulk over reading individual elements one
-    /// at a time. If you need to index multiple elements one at a time, prefer to use
-    /// `SliceRbRef::at(&mut i)` over `SliceRbRef[i]` to reduce the number of
-    /// modulo operations to perform.
+    /// Prefer to use this to manipulate data in bulk over indexing one element at a time.
     ///
     /// # Example
     ///
@@ -148,10 +145,7 @@ impl<'a, T: Copy + Clone + Default> SliceRbRef<'a, T> {
     ///
     /// # Performance
     ///
-    /// Prefer to use this to manipulate data in bulk over reading individual elements one
-    /// at a time. If you need to index multiple elements one at a time, prefer to use
-    /// `SliceRbRef::at(&mut i)` over `SliceRbRef[i]` to reduce the number of
-    /// modulo operations to perform.
+    /// Prefer to use this to manipulate data in bulk over indexing one element at a time.
     ///
     /// # Example
     ///
@@ -202,12 +196,21 @@ impl<'a, T: Copy + Clone + Default> SliceRbRef<'a, T> {
     /// length of the ring buffer, then the buffer's length will be used instead, while
     /// still preserving the position of the last element.
     ///
+    /// # Safety
+    ///
+    /// * Using this may cause undefined behavior if the given data in `slice`
+    /// in `SliceRbRef::new()` was not initialized first.
+    ///
     /// # Returns
     ///
     /// * The first slice is the starting chunk of data.
     /// * The second slice is the second contiguous chunk of data. This may
     /// or may not be empty depending if the buffer needed to wrap around to the beginning of
     /// its internal memory layout.
+    ///
+    /// # Performance
+    ///
+    /// Prefer to use this to manipulate data in bulk over indexing one element at a time.
     ///
     /// # Example
     ///
@@ -280,10 +283,7 @@ impl<'a, T: Copy + Clone + Default> SliceRbRef<'a, T> {
     ///
     /// # Performance
     ///
-    /// Prefer to use this to manipulate data in bulk over reading individual elements one
-    /// at a time. If you need to index multiple elements one at a time, prefer to use
-    /// `SliceRbRef::at(&mut i)` over `SliceRbRef[i]` to reduce the number of
-    /// modulo operations to perform.
+    /// Prefer to use this to manipulate data in bulk over indexing one element at a time.
     ///
     /// # Example
     ///
@@ -338,10 +338,7 @@ impl<'a, T: Copy + Clone + Default> SliceRbRef<'a, T> {
     ///
     /// # Performance
     ///
-    /// Prefer to use this to manipulate data in bulk over reading individual elements one
-    /// at a time. If you need to index multiple elements one at a time, prefer to use
-    /// `SliceRbRef::at(&mut i)` over `SliceRbRef[i]` to reduce the number of
-    /// modulo operations to perform.
+    /// Prefer to use this to manipulate data in bulk over indexing one element at a time.
     ///
     /// # Example
     ///
@@ -395,12 +392,21 @@ impl<'a, T: Copy + Clone + Default> SliceRbRef<'a, T> {
     /// length of the ring buffer, then the buffer's length will be used instead, while
     /// still preserving the position of the last element.
     ///
+    /// # Safety
+    ///
+    /// * Using this may cause undefined behavior if the given data in `slice`
+    /// in `SliceRbRef::new()` was not initialized first.
+    ///
     /// # Returns
     ///
     /// * The first slice is the starting chunk of data.
     /// * The second slice is the second contiguous chunk of data. This may
     /// or may not be empty depending if the buffer needed to wrap around to the beginning of
     /// its internal memory layout.
+    ///
+    /// # Performance
+    ///
+    /// Prefer to use this to manipulate data in bulk over indexing one element at a time.
     ///
     /// # Example
     ///
@@ -471,10 +477,7 @@ impl<'a, T: Copy + Clone + Default> SliceRbRef<'a, T> {
     ///
     /// # Performance
     ///
-    /// Prefer to use this to manipulate data in bulk over reading individual elements one
-    /// at a time. If you need to index multiple elements one at a time, prefer to use
-    /// `SliceRbRef::at(&mut i)` over `SliceRbRef[i]` to reduce the number of
-    /// modulo operations to perform.
+    /// Prefer to use this to manipulate data in bulk over indexing one element at a time.
     ///
     /// # Example
     ///
@@ -542,10 +545,7 @@ impl<'a, T: Copy + Clone + Default> SliceRbRef<'a, T> {
     ///
     /// # Performance
     ///
-    /// Prefer to use this to manipulate data in bulk over reading individual elements one
-    /// at a time. If you need to index multiple elements one at a time, prefer to use
-    /// `SliceRbRef::at(&mut i)` over `SliceRbRef[i]` to reduce the number of
-    /// modulo operations to perform.
+    /// Prefer to use this to manipulate data in bulk over indexing one element at a time.
     ///
     /// # Example
     ///
@@ -627,10 +627,7 @@ impl<'a, T: Copy + Clone + Default> SliceRbRef<'a, T> {
     ///
     /// # Performance
     ///
-    /// Prefer to use this to manipulate data in bulk over reading individual elements one
-    /// at a time. If you need to index multiple elements one at a time, prefer to use
-    /// `SliceRbRef::at(&mut i)` over `SliceRbRef[i]` to reduce the number of
-    /// modulo operations to perform.
+    /// Prefer to use this to manipulate data in bulk over indexing one element at a time.
     ///
     /// # Example
     ///

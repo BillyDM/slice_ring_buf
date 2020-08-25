@@ -463,10 +463,7 @@ impl<T: Copy + Clone + Default> SliceRB<T> {
     ///
     /// # Performance
     ///
-    /// Prefer to use this to manipulate data in bulk over reading individual elements one
-    /// at a time. If you need to index multiple elements one at a time, prefer to use
-    /// `SliceRB::at(&mut i)` over `SliceRB[i]` to reduce the number of
-    /// modulo operations to perform.
+    /// Prefer to use this to manipulate data in bulk over indexing one element at a time.
     ///
     /// # Example
     ///
@@ -522,10 +519,7 @@ impl<T: Copy + Clone + Default> SliceRB<T> {
     ///
     /// # Performance
     ///
-    /// Prefer to use this to manipulate data in bulk over reading individual elements one
-    /// at a time. If you need to index multiple elements one at a time, prefer to use
-    /// `SliceRB::at(&mut i)` over `SliceRB[i]` to reduce the number of
-    /// modulo operations to perform.
+    /// Prefer to use this to manipulate data in bulk over indexing one element at a time.
     ///
     /// # Example
     ///
@@ -591,6 +585,10 @@ impl<T: Copy + Clone + Default> SliceRB<T> {
     /// * The second slice is the second contiguous chunk of data. This may
     /// or may not be empty depending if the buffer needed to wrap around to the beginning of
     /// its internal memory layout.
+    ///
+    /// # Performance
+    ///
+    /// Prefer to use this to manipulate data in bulk over indexing one element at a time.
     ///
     /// # Example
     ///
@@ -668,10 +666,7 @@ impl<T: Copy + Clone + Default> SliceRB<T> {
     ///
     /// # Performance
     ///
-    /// Prefer to use this to manipulate data in bulk over accessing individual elements one
-    /// at a time. If you need to index multiple elements one at a time, prefer to use
-    /// `SliceRB::at(&mut i)` over `SliceRB[i]` to reduce the number of
-    /// modulo operations to perform.
+    /// Prefer to use this to manipulate data in bulk over indexing one element at a time.
     ///
     /// # Example
     ///
@@ -730,10 +725,7 @@ impl<T: Copy + Clone + Default> SliceRB<T> {
     ///
     /// # Performance
     ///
-    /// Prefer to use this to manipulate data in bulk over accessing individual elements one
-    /// at a time. If you need to index multiple elements one at a time, prefer to use
-    /// `SliceRB::at(&mut i)` over `SliceRB[i]` to reduce the number of
-    /// modulo operations to perform.
+    /// Prefer to use this to manipulate data in bulk over indexing one element at a time.
     ///
     /// # Example
     ///
@@ -802,6 +794,10 @@ impl<T: Copy + Clone + Default> SliceRB<T> {
     /// * The second slice is the second contiguous chunk of data. This may
     /// or may not be empty depending if the buffer needed to wrap around to the beginning of
     /// its internal memory layout.
+    ///
+    /// # Performance
+    ///
+    /// Prefer to use this to manipulate data in bulk over indexing one element at a time.
     ///
     /// # Example
     ///
@@ -877,10 +873,7 @@ impl<T: Copy + Clone + Default> SliceRB<T> {
     ///
     /// # Performance
     ///
-    /// Prefer to use this to manipulate data in bulk over accessing individual
-    /// elements one at a time. If you need to index multiple elements one at a time,
-    /// prefer to use `SliceRB::at(&mut i)` over `SliceRB[i]` to reduce the number of
-    /// modulo operations to perform.
+    /// Prefer to use this to manipulate data in bulk over indexing one element at a time.
     ///
     /// # Example
     ///
@@ -953,10 +946,7 @@ impl<T: Copy + Clone + Default> SliceRB<T> {
     ///
     /// # Performance
     ///
-    /// Prefer to use this to manipulate data in bulk over accessing individual
-    /// elements one at a time. If you need to index multiple elements one at a time,
-    /// prefer to use `SliceRB::at(&mut i)` over `SliceRB[i]` to reduce the number of
-    /// modulo operations to perform.
+    /// Prefer to use this to manipulate data in bulk over indexing one element at a time.
     ///
     /// # Example
     ///
@@ -1039,10 +1029,7 @@ impl<T: Copy + Clone + Default> SliceRB<T> {
     ///
     /// # Performance
     ///
-    /// Prefer to use this to manipulate data in bulk over accessing individual
-    /// elements one at a time. If you need to index multiple elements one at a time,
-    /// prefer to use `SliceRB::at(&mut i)` over `SliceRB[i]` to reduce the number of
-    /// modulo operations to perform.
+    /// Prefer to use this to manipulate data in bulk over indexing one element at a time.
     ///
     /// # Example
     ///
@@ -1104,6 +1091,9 @@ impl<T: Copy + Clone + Default> SliceRB<T> {
     }
 
     /// Returns the allocated capacity of the internal vector.
+    ///
+    /// Please note this is not the same as the length of the buffer.
+    /// For that use `SliceRB::len()`.
     ///
     /// # Example
     ///
