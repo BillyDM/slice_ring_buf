@@ -4,11 +4,11 @@
 [![Crates.io](https://img.shields.io/crates/v/slice_ring_buf.svg)](https://crates.io/crates/slice_ring_buf)
 [![License](https://img.shields.io/crates/l/slice_ring_buf.svg)](https://github.com/BillyDM/slice_ring_buf/blob/master/LICENSE)
 
-A fast ring buffer implementation written in Rust, optimized for working with slices. Copies/reads with slices are implemented with memcpy.
+A ring buffer implementation that is optimized for working with slices. Note this pretty much does the same thing as [`VecDeque`], but with the added ability to index using negative values, as well as working with buffers allocated on the stack.
 
 This crate has no consumer/producer logic, and is meant to be used as a raw data structure or a base for other data structures.
 
-This is optimized for manipulating data in bulk with slices. The performance of indexing individual elements one at a time will be limited by the performance of the modulo (remainder) operation on an `isize` value. If your use case needs better indexing performance at the cost of possibly larger buffer sizes, and does not need the buffer's length to be exactly something other than a power of 2, then take a look at my crate [`bit_mask_ring_buf`].
+This is optimized for manipulating data in chunks with slices. If your algorithm instead indexes elements one at a time and only uses buffers that have a size that is a power of two, then consider my crate [`bit_mask_ring_buf`].
 
 ## Installation
 Add `slice_ring_buf` as a dependency in your `Cargo.toml`:
@@ -70,4 +70,5 @@ assert_eq!(s2, &[]);
 ```
 
 [documentation]: https://docs.rs/slice_ring_buf/
+[`VecDeque`]: https://doc.rust-lang.org/std/collections/struct.VecDeque.html
 [`bit_mask_ring_buf`]: https://crates.io/crates/bit_mask_ring_buf/
