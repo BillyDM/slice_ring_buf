@@ -10,6 +10,8 @@ This crate has no consumer/producer logic, and is meant to be used for DSP or as
 
 This data type is optimized for manipulating data in chunks with slices. Indexing one element at a time is slow. If your algorithm indexes elements one at a time and only uses buffers that have a size equal to a power of two, then consider my crate [`bit_mask_ring_buf`].
 
+A self-expanding version of this data structure can be found in my crate [`expanding_slice_rb`].
+
 ## Example
 ```rust
 use core::num::NonZeroUsize;
@@ -62,3 +64,4 @@ assert_eq!(s2, &[]);
 [documentation]: https://docs.rs/slice_ring_buf/
 [`VecDeque`]: https://doc.rust-lang.org/std/collections/struct.VecDeque.html
 [`bit_mask_ring_buf`]: https://crates.io/crates/bit_mask_ring_buf/
+[`expanding_slice_rb`]: https://crates.io/crates/expanding_slice_rb/

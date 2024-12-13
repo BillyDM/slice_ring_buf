@@ -1,6 +1,6 @@
 [package]
 name = "slice_ring_buf"
-version = "0.3.0"
+version = "0.3.1"
 authors = ["Billy Messenger <60663878+BillyDM@users.noreply.github.com>"]
 license = "MIT"
 keywords = ["ring", "circular", "buffer", "dsp"]
