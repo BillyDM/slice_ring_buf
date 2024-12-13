@@ -1,15 +1,12 @@
-use core::num::NonZeroUsize;
-use core::fmt::Debug;
+use alloc::vec::Vec;
+use core::{fmt::Debug, num::NonZeroUsize};
 
-use super::inner;
+use crate::inner;
 
 /// A ring buffer implementation optimized for working with slices. Note this pretty
 /// much does the same thing as [`VecDeque`], but with the added ability to index
 /// using negative values, as well as working with buffers allocated on the stack.
 /// This struct can be used without the standard library (`#![no_std]`).
-///
-/// This works the same as [`SliceRB`] except it uses an immutable reference as its
-/// data source instead of an internal Vec.
 ///
 /// This struct has no consumer/producer logic, and is meant to be used for DSP or as
 /// a base for other data structures.
@@ -18,84 +15,181 @@ use super::inner;
 /// Indexing one element at a time is slow.
 ///
 /// The length of this ring buffer cannot be `0`.
-///
+/// 
 /// ## Example
 /// ```rust
-/// # use slice_ring_buf::SliceRbRef;
-/// let stack_data = [0u32, 1, 2, 3];
-/// let rb_ref = SliceRbRef::new(&stack_data);
-/// assert_eq!(rb_ref[-3], 1);
+/// # use core::num::NonZeroUsize;
+/// # use slice_ring_buf::SliceRB;
+/// // Create a ring buffer with type u32. The data will be
+/// // initialized with the value of `0`.
+/// let mut rb = SliceRB::<u32>::new(NonZeroUsize::new(4).unwrap(), 0);
 ///
-/// let (s1, s2) = rb_ref.as_slices_len(2, 3);
-/// assert_eq!(s1, &[2, 3]);
-/// assert_eq!(s2, &[0]);
+/// // Memcpy data from a slice into the ring buffer at arbitrary
+/// // `isize` indexes. Earlier data will not be copied if it will
+/// // be overwritten by newer data, avoiding unecessary memcpy's.
+/// // The correct placement of the newer data will still be preserved.
+/// rb.write_latest(&[0, 2, 3, 4, 1], 0);
+/// assert_eq!(rb[0], 1);
+/// assert_eq!(rb[1], 2);
+/// assert_eq!(rb[2], 3);
+/// assert_eq!(rb[3], 4);
+///
+/// // Memcpy into slices at arbitrary `isize` indexes and length.
+/// let mut read_buffer = [0u32; 7];
+/// rb.read_into(&mut read_buffer, 2);
+/// assert_eq!(read_buffer, [3, 4, 1, 2, 3, 4, 1]);
+///
+/// // Read/write by retrieving slices directly.
+/// let (s1, s2) = rb.as_slices_len(1, 4);
+/// assert_eq!(s1, &[2, 3, 4]);
+/// assert_eq!(s2, &[1]);
+///
+/// // Read/write to buffer by indexing. (Note that indexing
+/// // one element at a time is slow.)
+/// rb[0] = 0;
+/// rb[1] = 1;
+/// rb[2] = 2;
+/// rb[3] = 3;
+///
+/// // Wrap when reading/writing outside of bounds.
+/// assert_eq!(rb[-1], 3);
+/// assert_eq!(rb[10], 2);
 /// ```
 ///
 /// [`VecDeque`]: https://doc.rust-lang.org/std/collections/struct.VecDeque.html
-/// [`SliceRB`]: struct.SliceRB.html
-pub struct SliceRbRef<'a, T> {
-    data: &'a [T],
+pub struct SliceRB<T> {
+    vec: Vec<T>,
 }
 
-impl<'a, T> SliceRbRef<'a, T> {
-    /// Creates a new [`SliceRbRef`] with the given data.
+impl<T> SliceRB<T> {
+    /// Creates a new [`SliceRB`] with the given vec as its data source.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `vec.len()` is equal to `0` or  is greater than `isize::MAX`.
+    /// 
+    /// # Example
+    /// ```
+    /// # use slice_ring_buf::SliceRB;
+    /// let rb = SliceRB::<u32>::from_vec(vec![0, 1, 2, 3]);
+    ///
+    /// assert_eq!(rb.len().get(), 4);
+    /// assert_eq!(rb[-3], 1);
+    /// ```
+    pub fn from_vec(vec: Vec<T>) -> Self {
+        assert!(!vec.is_empty());
+        assert!(vec.len() <= isize::MAX as usize);
+
+        Self { vec }
+    }
+
+    /// Creates a new [`SliceRB`] without initializing data.
+    ///
+    /// * `len` - The length of the ring buffer.
+    ///
+    /// # Safety
+    ///
+    /// * Undefined behavior may occur if uninitialized data is read from. By using
+    /// this you assume the responsibility of making sure any data is initialized
+    /// before it is read.
     ///
     /// # Example
     ///
     /// ```
-    /// # use slice_ring_buf::SliceRbRef;
-    /// let data = [1u32, 2, 3, 4];
-    /// let rb = SliceRbRef::new(&data[..]);
-    ///
-    /// assert_eq!(rb.len().get(), 4);
-    ///
-    /// assert_eq!(rb[0], 1);
-    /// assert_eq!(rb[1], 2);
-    /// assert_eq!(rb[2], 3);
-    /// assert_eq!(rb[3], 4);
+    /// # use core::num::NonZeroUsize;
+    /// # use slice_ring_buf::SliceRB;
+    /// unsafe {
+    ///     let rb = SliceRB::<u32>::new_uninit(NonZeroUsize::new(3).unwrap());
+    ///     assert_eq!(rb.len().get(), 3);
+    /// }
     /// ```
     ///
     /// # Panics
     ///
-    /// * This will panic if the length of `slice` is `0` or is greater
-    /// than `isize::MAX`.
-    #[inline]
-    pub const fn new(slice: &'a [T]) -> Self {
-        assert!(!slice.is_empty());
-        assert!(slice.len() <= isize::MAX as usize);
+    /// * This will panic if `len > isize::MAX`.
+    /// * This will panic if allocation fails due to being out of memory.
+    pub unsafe fn new_uninit(len: NonZeroUsize) -> Self {
+        assert!(len.get() <= isize::MAX as usize);
 
-        Self { data: slice }
+        let mut vec = Vec::with_capacity(len.get());
+        vec.set_len(len.get());
+
+        Self { vec }
     }
 
-    /// Creates a new [`SliceRbRef`] with the given data without checking
-    /// that the length of the data is greater than `0` and less than or
-    /// equal to `isize::MAX`.
+    /// Creates a new [`SliceRB`] with an allocated capacity equal to exactly the
+    /// given length. No data will be initialized.
+    ///
+    /// * `len` - The length of the ring buffer.
+    ///
+    /// # Safety
+    ///
+    /// * Undefined behavior may occur if uninitialized data is read from. By using
+    /// this you assume the responsibility of making sure any data is initialized
+    /// before it is read.
     ///
     /// # Example
     ///
     /// ```
-    /// # use slice_ring_buf::SliceRbRef;
-    /// let data = [1u32, 2, 3, 4];
-    /// let rb = unsafe { SliceRbRef::new_unchecked(&data[..]) };
-    ///
-    /// assert_eq!(rb.len().get(), 4);
-    ///
-    /// assert_eq!(rb[0], 1);
-    /// assert_eq!(rb[1], 2);
-    /// assert_eq!(rb[2], 3);
-    /// assert_eq!(rb[3], 4);
+    /// # use core::num::NonZeroUsize;
+    /// # use slice_ring_buf::SliceRB;
+    /// unsafe {
+    ///     let rb = SliceRB::<u32>::new_exact_uninit(NonZeroUsize::new(3).unwrap());
+    ///     assert_eq!(rb.len().get(), 3);
+    /// }
     /// ```
+    ///
+    /// # Panics
+    ///
+    /// * This will panic if `len > isize::MAX`.
+    /// * This will panic if allocation fails due to being out of memory.
+    pub unsafe fn new_exact_uninit(len: NonZeroUsize) -> Self {
+        assert!(len.get() <= isize::MAX as usize);
+
+        let mut vec = Vec::new();
+        vec.reserve_exact(len.get());
+        vec.set_len(len.get());
+
+        Self { vec }
+    }
+
+    /// Creates a new [`SliceRB`] without initializing data, while reserving extra
+    /// capacity for future changes to `len`.
+    ///
+    /// * `len` - The length of the ring buffer.
+    /// * `capacity` - The allocated capacity of the ring buffer. If this is less than
+    /// `len`, then it will be ignored.
     ///
     /// # Safety
     ///
-    /// The length of `slice` must be greater than `0` and less than or
-    /// equal to `isize::MAX`.
-    #[inline]
-    pub const unsafe fn new_unchecked(slice: &'a [T]) -> Self {
-        debug_assert!(!slice.is_empty());
-        debug_assert!(slice.len() <= isize::MAX as usize);
+    /// * Undefined behavior may occur if uninitialized data is read from. By using
+    /// this you assume the responsibility of making sure any data is initialized
+    /// before it is read.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use core::num::NonZeroUsize;
+    /// # use slice_ring_buf::SliceRB;
+    /// unsafe {
+    ///     let rb = SliceRB::<u32>::with_capacity_uninit(NonZeroUsize::new(3).unwrap(), 10);
+    ///     assert_eq!(rb.len().get(), 3);
+    ///     assert!(rb.capacity().get() >= 10);
+    /// }
+    /// ```
+    ///
+    /// # Panics
+    ///
+    /// * This will panic if `len > isize::MAX` or `capacity > isize::MAX`.
+    /// * This will panic if allocation fails due to being out of memory.
+    pub unsafe fn with_capacity_uninit(len: NonZeroUsize, capacity: usize) -> Self {
+        assert!(len.get() <= isize::MAX as usize);
+        assert!(capacity <= isize::MAX as usize);
 
-        Self { data: slice }
+        let mut vec = Vec::with_capacity(core::cmp::max(len.get(), capacity));
+        vec.set_len(len.get());
+
+        Self { vec }
     }
 
     /// Returns the length of the ring buffer.
@@ -103,16 +197,38 @@ impl<'a, T> SliceRbRef<'a, T> {
     /// # Example
     ///
     /// ```
-    /// # use slice_ring_buf::SliceRbRef;
-    /// let data = [0u32; 4];
-    /// let rb = SliceRbRef::new(&data[..]);
+    /// # use core::num::NonZeroUsize;
+    /// # use slice_ring_buf::SliceRB;
+    /// let rb = SliceRB::<u32>::new(NonZeroUsize::new(4).unwrap(), 0);
     ///
     /// assert_eq!(rb.len().get(), 4);
     /// ```
     pub fn len(&self) -> NonZeroUsize {
         // SAFETY:
-        // * All constructors ensure that the length is greater than `0`.
-        unsafe { NonZeroUsize::new_unchecked(self.data.len()) }
+        // * All constructors and other methods which modify the length ensure
+        // that the length is greater than `0`.
+        unsafe { NonZeroUsize::new_unchecked(self.vec.len()) }
+    }
+
+    /// Returns the allocated capacity of the internal vector.
+    ///
+    /// Please note this is not the same as the length of the buffer.
+    /// For that use `SliceRB::len()`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use core::num::NonZeroUsize;
+    /// # use slice_ring_buf::SliceRB;
+    /// let rb = SliceRB::<u32>::new(NonZeroUsize::new(4).unwrap(), 0);
+    ///
+    /// assert!(rb.capacity().get() >= 4);
+    /// ```
+    pub fn capacity(&self) -> NonZeroUsize {
+        // SAFETY:
+        // * All constructors and other methods which modify the length ensure
+        // that the length is greater than `0`.
+        unsafe { NonZeroUsize::new_unchecked(self.vec.capacity()) }
     }
 
     /// Returns the actual index of the ring buffer from the given
@@ -127,15 +243,15 @@ impl<'a, T> SliceRbRef<'a, T> {
     ///
     /// Prefer to manipulate data in bulk with methods that return slices. If you
     /// need to index multiple elements one at a time, prefer to use
-    /// `SliceRbRef::at(&mut i)` over `SliceRbRef[i]` to reduce the number of
+    /// `SliceRB::at(&mut i)` over `SliceRB[i]` to reduce the number of
     /// modulo operations to perform.
     ///
     /// # Example
     ///
     /// ```
-    /// # use slice_ring_buf::SliceRbRef;
-    /// let data = [0u32; 4];
-    /// let rb = SliceRbRef::new(&data[..]);
+    /// # use core::num::NonZeroUsize;
+    /// # use slice_ring_buf::SliceRB;
+    /// let rb = SliceRB::<u32>::new(NonZeroUsize::new(4).unwrap(), 0);
     ///
     /// assert_eq!(rb.constrain(2), 2);
     /// assert_eq!(rb.constrain(4), 0);
@@ -143,372 +259,134 @@ impl<'a, T> SliceRbRef<'a, T> {
     /// assert_eq!(rb.constrain(7), 3);
     /// ```
     pub fn constrain(&self, i: isize) -> isize {
-        inner::constrain(i, self.data.len() as isize)
+        inner::constrain(i, self.vec.len() as isize)
     }
 
-    /// Returns two slices that contain all the data in the ring buffer
-    /// starting at the index `start`.
+    /// Sets the length of the ring buffer without initializing any newly allocated data.
     ///
-    /// # Returns
+    /// * If `len` is less than the current length, then the data
+    /// will be truncated.
+    /// * If `len` is larger than the current length, then all newly
+    /// allocated elements appended to the end will be unitialized.
     ///
-    /// * The first slice is the starting chunk of data. This will never be empty.
-    /// * The second slice is the second contiguous chunk of data. This may
-    /// or may not be empty depending if the buffer needed to wrap around to the beginning of
-    /// its internal memory layout.
+    /// # Safety
     ///
-    /// # Performance
-    ///
-    /// Prefer to use this to manipulate data in bulk over indexing one element at a time.
+    /// * Undefined behavior may occur if uninitialized data is read from. By using
+    /// this you assume the responsibility of making sure any data is initialized
+    /// before it is read.
     ///
     /// # Example
     ///
     /// ```
-    /// # use slice_ring_buf::SliceRbRef;
-    /// let data = [1u32, 2, 3, 4];
-    /// let rb = SliceRbRef::new(&data[..]);
+    /// # use core::num::NonZeroUsize;
+    /// # use slice_ring_buf::SliceRB;
+    /// let mut rb = SliceRB::<u32>::new(NonZeroUsize::new(2).unwrap(), 0);
+    /// rb[0] = 1;
+    /// rb[1] = 2;
     ///
-    /// let (s1, s2) = rb.as_slices(-4);
-    /// assert_eq!(s1, &[1, 2, 3, 4]);
-    /// assert_eq!(s2, &[]);
+    /// unsafe {
+    ///     rb.set_len_uninit(NonZeroUsize::new(4).unwrap());
     ///
-    /// let (s1, s2) = rb.as_slices(3);
-    /// assert_eq!(s1, &[4]);
-    /// assert_eq!(s2, &[1, 2, 3]);
-    /// ```
-    pub fn as_slices(&self, start: isize) -> (&[T], &[T]) {
-        // SAFETY:
-        // The constructors ensure that `self.data.len() > 0 && self.data.len() <= isize::MAX`.
-        unsafe { inner::as_slices(start, self.data) }
-    }
-
-    /// Returns two slices of data in the ring buffer
-    /// starting at the index `start` and with length `len`.
+    ///     assert_eq!(rb.len().get(), 4);
     ///
-    /// * `start` - The starting index
-    /// * `len` - The length of data to read. If `len` is greater than the
-    /// capacity of the ring buffer, then that capacity will be used instead.
-    ///
-    /// # Returns
-    ///
-    /// * The first slice is the starting chunk of data.
-    /// * The second slice is the second contiguous chunk of data. This may
-    /// or may not be empty depending if the buffer needed to wrap around to the beginning of
-    /// its internal memory layout.
-    ///
-    /// # Performance
-    ///
-    /// Prefer to use this to manipulate data in bulk over indexing one element at a time.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// # use slice_ring_buf::SliceRbRef;
-    /// let data = [1u32, 2, 3, 4];
-    /// let rb = SliceRbRef::new(&data[..]);
-    ///
-    /// let (s1, s2) = rb.as_slices_len(-4, 3);
-    /// assert_eq!(s1, &[1, 2, 3]);
-    /// assert_eq!(s2, &[]);
-    ///
-    /// let (s1, s2) = rb.as_slices_len(3, 5);
-    /// assert_eq!(s1, &[4]);
-    /// assert_eq!(s2, &[1, 2, 3]);
-    /// ```
-    pub fn as_slices_len(&self, start: isize, len: usize) -> (&[T], &[T]) {
-        // SAFETY:
-        // The constructors ensure that `self.data.len() > 0 && self.data.len() <= isize::MAX`.
-        unsafe { inner::as_slices_len(start, len, self.data) }
-    }
-
-    /// Returns two slices of data in the ring buffer
-    /// starting at the index `start` and with length `len`. If `len` is greater
-    /// than the length of the ring buffer, then the buffer's length will be used
-    /// instead, while still preserving the position of the last element.
-    ///
-    /// * `start` - The starting index
-    /// * `len` - The length of data to read. If `len` is greater than the
-    /// length of the ring buffer, then the buffer's length will be used instead, while
-    /// still preserving the position of the last element.
-    ///
-    /// # Returns
-    ///
-    /// * The first slice is the starting chunk of data.
-    /// * The second slice is the second contiguous chunk of data. This may
-    /// or may not be empty depending if the buffer needed to wrap around to the beginning of
-    /// its internal memory layout.
-    ///
-    /// # Performance
-    ///
-    /// Prefer to use this to manipulate data in bulk over indexing one element at a time.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// # use slice_ring_buf::SliceRbRef;
-    /// let data = [1u32, 2, 3, 4];
-    /// let rb = SliceRbRef::new(&data[..]);
-    ///
-    /// let (s1, s2) = rb.as_slices_latest(-4, 3);
-    /// assert_eq!(s1, &[1, 2, 3]);
-    /// assert_eq!(s2, &[]);
-    ///
-    /// let (s1, s2) = rb.as_slices_latest(0, 5);
-    /// assert_eq!(s1, &[2, 3, 4]);
-    /// assert_eq!(s2, &[1]);
-    /// ```
-    pub fn as_slices_latest(&self, start: isize, len: usize) -> (&[T], &[T]) {
-        // SAFETY:
-        // The constructors ensure that `self.data.len() > 0 && self.data.len() <= isize::MAX`.
-        unsafe { inner::as_slices_latest(start, len, self.data) }
-    }
-
-    /// Returns all the data in the buffer. The starting index will
-    /// always be `0`.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// # use slice_ring_buf::SliceRbRef;
-    /// let data = [1u32, 2, 3, 4];
-    /// let rb = SliceRbRef::new(&data[..]);
-    ///
-    /// let raw_data = rb.raw_data();
-    /// assert_eq!(raw_data, &[1u32, 2, 3, 4]);
-    /// ```
-    pub fn raw_data(&self) -> &[T] {
-        self.data
-    }
-
-    /// Returns an immutable reference the element at the index of type `isize`.
-    ///
-    /// # Performance
-    ///
-    /// Prefer to manipulate data in bulk with methods that return slices. If you
-    /// need to index multiple elements one at a time, prefer to use
-    /// this over `SliceRbRef[i]` to reduce the number of
-    /// modulo operations to perform.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// # use slice_ring_buf::SliceRbRef;
-    /// let data = [1u32, 2, 3, 4];
-    /// let rb = SliceRbRef::new(&data[..]);
-    ///
-    /// assert_eq!(*rb.get(-3), 2);
-    /// ```
-    #[inline]
-    pub fn get(&self, i: isize) -> &T {
-        // SAFETY:
-        // The constructors ensure that `self.data.len() > 0 && self.data.len() <= isize::MAX`.
-        unsafe { inner::get(i, self.data) }
-    }
-
-    /// Returns an immutable reference to the element at the index of type `isize`
-    /// while also constraining the index `i`. This is more efficient than calling
-    /// both methods individually.
-    ///
-    /// # Performance
-    ///
-    /// Prefer to manipulate data in bulk with methods that return slices. If you
-    /// need to index multiple elements one at a time, prefer to use
-    /// this over `SliceRbRef[i]` to reduce the number of
-    /// modulo operations to perform.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// # use slice_ring_buf::SliceRbRef;
-    /// let data = [1u32, 2, 3, 4];
-    /// let rb = SliceRbRef::new(&data[..]);
-    ///
-    /// let mut i = -3;
-    /// assert_eq!(*rb.constrain_and_get(&mut i), 2);
-    /// assert_eq!(i, 1);
-    /// ```
-    #[inline]
-    pub fn constrain_and_get(&self, i: &mut isize) -> &T {
-        // SAFETY:
-        // The constructors ensure that `self.data.len() > 0 && self.data.len() <= isize::MAX`.
-        unsafe { inner::constrain_and_get(i, self.data) }
-    }
-}
-
-impl<'a, T: Clone + Copy> SliceRbRef<'a, T> {
-    /// Copies the data from the ring buffer starting from the index `start`
-    /// into the given slice. If the length of `slice` is larger than the
-    /// capacity of the ring buffer, then the data will be reapeated until
-    /// the given slice is filled.
-    ///
-    /// * `slice` - This slice to copy the data into.
-    /// * `start` - The index of the ring buffer to start copying from.
-    ///
-    /// # Performance
-    ///
-    /// Prefer to use this to manipulate data in bulk over indexing one element at a time.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// # use slice_ring_buf::SliceRbRef;
-    /// let data = [1u32, 2, 3, 4];
-    /// let rb = SliceRbRef::new(&data[..]);
-    ///
-    /// let mut read_buf = [0u32; 3];
-    /// rb.read_into(&mut read_buf[..], -3);
-    /// assert_eq!(read_buf, [2, 3, 4]);
-    ///
-    /// let mut read_buf = [0u32; 9];
-    /// rb.read_into(&mut read_buf[..], 2);
-    /// assert_eq!(read_buf, [3, 4, 1, 2, 3, 4, 1, 2, 3]);
-    /// ```
-    pub fn read_into(&self, slice: &mut [T], start: isize) {
-        // SAFETY:
-        // The constructors ensure that `self.data.len() > 0 && self.data.len() <= isize::MAX`.
-        unsafe { inner::read_into(slice, start, self.data) }
-    }
-}
-
-/// A ring buffer implementation optimized for working with slices. Note this pretty
-/// much does the same thing as [`VecDeque`], but with the added ability to index
-/// using negative values, as well as working with buffers allocated on the stack.
-/// This struct can be used without the standard library (`#![no_std]`).
-///
-/// This works the same as [`SliceRB`] except it uses a mutable reference as its
-/// data source instead of an internal Vec.
-///
-/// This struct has no consumer/producer logic, and is meant to be used for DSP or as
-/// a base for other data structures.
-///
-/// This data type is optimized for manipulating data in chunks with slices.
-/// Indexing one element at a time is slow.
-///
-/// The length of this ring buffer cannot be `0`.
-///
-/// ## Example
-/// ```rust
-/// # use slice_ring_buf::SliceRbRefMut;
-/// let mut stack_data = [0u32, 1, 2, 3];
-/// let mut rb_ref = SliceRbRefMut::new(&mut stack_data);
-///
-/// rb_ref[-4] = 5;
-///
-/// let (s1, s2) = rb_ref.as_slices_len(2, 3);
-/// assert_eq!(s1, &[2, 3]);
-/// assert_eq!(s2, &[5]);
-/// ```
-///
-/// [`VecDeque`]: https://doc.rust-lang.org/std/collections/struct.VecDeque.html
-/// [`SliceRB`]: struct.SliceRB.html
-pub struct SliceRbRefMut<'a, T> {
-    data: &'a mut [T],
-}
-
-impl<'a, T> SliceRbRefMut<'a, T> {
-    /// Creates a new [`SliceRbRefMut`] with the given data.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// # use slice_ring_buf::SliceRbRefMut;
-    /// let mut data = [1u32, 2, 3, 4];
-    /// let rb = SliceRbRefMut::new(&mut data[..]);
-    ///
-    /// assert_eq!(rb.len(), 4);
-    ///
-    /// assert_eq!(rb[0], 1);
-    /// assert_eq!(rb[1], 2);
-    /// assert_eq!(rb[2], 3);
-    /// assert_eq!(rb[3], 4);
+    ///     assert_eq!(rb[0], 1);
+    ///     assert_eq!(rb[1], 2);
+    /// }
     /// ```
     ///
     /// # Panics
     ///
-    /// * This will panic if the length of `slice` is `0` or is greater
-    /// than `isize::MAX`.
-    #[inline]
-    pub const fn new(slice: &'a mut [T]) -> Self {
-        assert!(!slice.is_empty());
-        assert!(slice.len() <= isize::MAX as usize);
+    /// * This will panic if `len > isize::MAX`.
+    /// * This will panic if allocation fails due to being out of memory.
+    pub unsafe fn set_len_uninit(&mut self, len: NonZeroUsize) {
+        assert!(len.get() <= isize::MAX as usize);
 
-        Self { data: slice }
+        if len.get() != self.vec.len() {
+            if len.get() > self.vec.len() {
+                // Extend without initializing.
+                self.vec.reserve(len.get() - self.vec.len());
+            }
+            self.vec.set_len(len.get());
+        }
     }
 
-    /// Creates a new [`SliceRbRefMut`] with the given data without checking
-    /// that the length of the data is greater than `0` and less than or
-    /// equal to `isize::MAX`.
+    /// Reserves capacity for at least `additional` more elements to be inserted
+    /// in the internal `Vec`. This is equivalant to `Vec::reserve()`.
+    ///
+    /// The collection may reserve more space to avoid frequent reallocations. After
+    /// calling reserve, capacity will be greater than or equal to self.len() + additional.
+    /// Does nothing if capacity is already sufficient.
     ///
     /// # Example
     ///
     /// ```
-    /// # use slice_ring_buf::SliceRbRefMut;
-    /// let mut data = [1u32, 2, 3, 4];
-    /// let rb = unsafe { SliceRbRefMut::new_unchecked(&mut data[..]) };
+    /// # use core::num::NonZeroUsize;
+    /// # use slice_ring_buf::SliceRB;
+    /// let mut rb = SliceRB::<u32>::new(NonZeroUsize::new(2).unwrap(), 0);
     ///
-    /// assert_eq!(rb.len(), 4);
+    /// rb.reserve(8);
     ///
-    /// assert_eq!(rb[0], 1);
-    /// assert_eq!(rb[1], 2);
-    /// assert_eq!(rb[2], 3);
-    /// assert_eq!(rb[3], 4);
+    /// assert!(rb.capacity().get() >= 10);
     /// ```
     ///
-    /// # Safety
+    /// # Panics
     ///
-    /// The length of `slice` must be greater than `0` and less than or
-    /// equal to `isize::MAX`.
-    #[inline]
-    pub const unsafe fn new_unchecked(slice: &'a mut [T]) -> Self {
-        debug_assert!(!slice.is_empty());
-        debug_assert!(slice.len() <= isize::MAX as usize);
-
-        Self { data: slice }
+    /// * Panics if out of memory.
+    pub fn reserve(&mut self, additional: usize) {
+        self.vec.reserve(additional);
     }
 
-    /// Returns the length of the ring buffer.
+    /// Reserves capacity for exactly `additional` more elements to be inserted
+    /// in the internal `Vec`. This is equivalant to `Vec::reserve_exact()`.
+    ///
+    /// The collection may reserve more space to avoid frequent reallocations. After
+    /// calling reserve, capacity will be greater than or equal to self.len() + additional.
+    /// Does nothing if capacity is already sufficient.
+    ///
+    /// Note that the allocator may give the collection more space than it requests. Therefore,
+    /// capacity can not be relied upon to be precisely minimal. Prefer `reserve` if future
+    /// insertions are expected.
     ///
     /// # Example
     ///
     /// ```
-    /// # use slice_ring_buf::SliceRbRefMut;
-    /// let mut data = [0u32; 4];
-    /// let mut rb = SliceRbRefMut::new(&mut data[..]);
+    /// # use core::num::NonZeroUsize;
+    /// # use slice_ring_buf::SliceRB;
+    /// let mut rb = SliceRB::<u32>::new(NonZeroUsize::new(2).unwrap(), 0);
     ///
-    /// assert_eq!(rb.len(), 4);
+    /// rb.reserve_exact(8);
+    ///
+    /// assert!(rb.capacity().get() >= 10);
     /// ```
-    pub fn len(&self) -> usize {
-        self.data.len()
+    ///
+    /// # Panics
+    ///
+    /// * Panics if out of memory.
+    pub fn reserve_exact(&mut self, additional: usize) {
+        self.vec.reserve_exact(additional);
     }
 
-    /// Returns the actual index of the ring buffer from the given
-    /// `i` index.
+    /// Shrinks the capacity of the internal `Vec` as much as possible. This is equivalant to
+    /// `Vec::shrink_to_fit`.
     ///
-    /// * First, a bounds check will be performed. If it is within bounds,
-    /// then it is simply returned.
-    /// * If it is not in bounds, then performance will
-    /// be limited by the modulo (remainder) operation on an `isize` value.
-    ///
-    /// # Performance
-    ///
-    /// Prefer to manipulate data in bulk with methods that return slices. If you
-    /// need to index multiple elements one at a time, prefer to use
-    /// `SliceRbRef::at(&mut i)` over `SliceRbRef[i]` to reduce the number of
-    /// modulo operations to perform.
+    /// It will drop down as close as possible to the length but the allocator may still inform
+    /// the vector that there is space for a few more elements.
     ///
     /// # Example
     ///
     /// ```
-    /// # use slice_ring_buf::SliceRbRefMut;
-    /// let mut data = [0u32; 4];
-    /// let mut rb = SliceRbRefMut::new(&mut data[..]);
+    /// # use core::num::NonZeroUsize;
+    /// # use slice_ring_buf::SliceRB;
+    /// let mut rb = SliceRB::<u32>::new(NonZeroUsize::new(2).unwrap(), 0);
     ///
-    /// assert_eq!(rb.constrain(2), 2);
-    /// assert_eq!(rb.constrain(4), 0);
-    /// assert_eq!(rb.constrain(-3), 1);
-    /// assert_eq!(rb.constrain(7), 3);
+    /// rb.reserve(8);
+    /// assert!(rb.capacity().get() >= 10);
+    ///
+    /// rb.shrink_to_fit();
+    /// assert!(rb.capacity().get() >= 2);
     /// ```
-    pub fn constrain(&self, i: isize) -> isize {
-        inner::constrain(i, self.data.len() as isize)
+    pub fn shrink_to_fit(&mut self) {
+        self.vec.shrink_to_fit();
     }
 
     /// Returns two slices that contain all the data in the ring buffer
@@ -528,9 +406,13 @@ impl<'a, T> SliceRbRefMut<'a, T> {
     /// # Example
     ///
     /// ```
-    /// # use slice_ring_buf::SliceRbRefMut;
-    /// let mut data = [1u32, 2, 3, 4];
-    /// let mut rb = SliceRbRefMut::new(&mut data[..]);
+    /// # use core::num::NonZeroUsize;
+    /// # use slice_ring_buf::SliceRB;
+    /// let mut rb = SliceRB::<u32>::new(NonZeroUsize::new(4).unwrap(), 0);
+    /// rb[0] = 1;
+    /// rb[1] = 2;
+    /// rb[2] = 3;
+    /// rb[3] = 4;
     ///
     /// let (s1, s2) = rb.as_slices(-4);
     /// assert_eq!(s1, &[1, 2, 3, 4]);
@@ -542,8 +424,10 @@ impl<'a, T> SliceRbRefMut<'a, T> {
     /// ```
     pub fn as_slices(&self, start: isize) -> (&[T], &[T]) {
         // SAFETY:
-        // The constructors ensure that `self.data.len() > 0 && self.data.len() <= isize::MAX`.
-        unsafe { inner::as_slices(start, self.data) }
+        // * All constructors ensure that the length of `vec` is greater than `0`.
+        // * All constructors and other methods which modify the length ensure
+        // that the length is less than or equal to `isize::MAX`.
+        unsafe { inner::as_slices(start, &self.vec) }
     }
 
     /// Returns two slices of data in the ring buffer
@@ -551,7 +435,7 @@ impl<'a, T> SliceRbRefMut<'a, T> {
     ///
     /// * `start` - The starting index
     /// * `len` - The length of data to read. If `len` is greater than the
-    /// capacity of the ring buffer, then that capacity will be used instead.
+    /// length of the ring buffer, then that length will be used instead.
     ///
     /// # Returns
     ///
@@ -567,9 +451,13 @@ impl<'a, T> SliceRbRefMut<'a, T> {
     /// # Example
     ///
     /// ```
-    /// # use slice_ring_buf::SliceRbRefMut;
-    /// let mut data = [1u32, 2, 3, 4];
-    /// let mut rb = SliceRbRefMut::new(&mut data[..]);
+    /// # use core::num::NonZeroUsize;
+    /// # use slice_ring_buf::SliceRB;
+    /// let mut rb = SliceRB::<u32>::new(NonZeroUsize::new(4).unwrap(), 0);
+    /// rb[0] = 1;
+    /// rb[1] = 2;
+    /// rb[2] = 3;
+    /// rb[3] = 4;
     ///
     /// let (s1, s2) = rb.as_slices_len(-4, 3);
     /// assert_eq!(s1, &[1, 2, 3]);
@@ -581,8 +469,10 @@ impl<'a, T> SliceRbRefMut<'a, T> {
     /// ```
     pub fn as_slices_len(&self, start: isize, len: usize) -> (&[T], &[T]) {
         // SAFETY:
-        // The constructors ensure that `self.data.len() > 0 && self.data.len() <= isize::MAX`.
-        unsafe { inner::as_slices_len(start, len, self.data) }
+        // * All constructors ensure that the length of `vec` is greater than `0`.
+        // * All constructors and other methods which modify the length ensure
+        // that the length is less than or equal to `isize::MAX`.
+        unsafe { inner::as_slices_len(start, len, &self.vec) }
     }
 
     /// Returns two slices of data in the ring buffer
@@ -609,9 +499,13 @@ impl<'a, T> SliceRbRefMut<'a, T> {
     /// # Example
     ///
     /// ```
-    /// # use slice_ring_buf::SliceRbRefMut;
-    /// let mut data = [1u32, 2, 3, 4];
-    /// let rb = SliceRbRefMut::new(&mut data[..]);
+    /// # use core::num::NonZeroUsize;
+    /// # use slice_ring_buf::SliceRB;
+    /// let mut rb = SliceRB::<u32>::new(NonZeroUsize::new(4).unwrap(), 0);
+    /// rb[0] = 1;
+    /// rb[1] = 2;
+    /// rb[2] = 3;
+    /// rb[3] = 4;
     ///
     /// let (s1, s2) = rb.as_slices_latest(-4, 3);
     /// assert_eq!(s1, &[1, 2, 3]);
@@ -623,8 +517,10 @@ impl<'a, T> SliceRbRefMut<'a, T> {
     /// ```
     pub fn as_slices_latest(&self, start: isize, len: usize) -> (&[T], &[T]) {
         // SAFETY:
-        // The constructors ensure that `self.data.len() > 0 && self.data.len() <= isize::MAX`.
-        unsafe { inner::as_slices_latest(start, len, self.data) }
+        // * All constructors ensure that the length of `vec` is greater than `0`.
+        // * All constructors and other methods which modify the length ensure
+        // that the length is less than or equal to `isize::MAX`.
+        unsafe { inner::as_slices_latest(start, len, &self.vec) }
     }
 
     /// Returns two mutable slices that contain all the data in the ring buffer
@@ -644,9 +540,13 @@ impl<'a, T> SliceRbRefMut<'a, T> {
     /// # Example
     ///
     /// ```
-    /// # use slice_ring_buf::SliceRbRefMut;
-    /// let mut data = [1u32, 2, 3, 4];
-    /// let mut rb = SliceRbRefMut::new(&mut data[..]);
+    /// # use core::num::NonZeroUsize;
+    /// # use slice_ring_buf::SliceRB;
+    /// let mut rb = SliceRB::<u32>::new(NonZeroUsize::new(4).unwrap(), 0);
+    /// rb[0] = 1;
+    /// rb[1] = 2;
+    /// rb[2] = 3;
+    /// rb[3] = 4;
     ///
     /// let (s1, s2) = rb.as_mut_slices(-4);
     /// assert_eq!(s1, &mut [1, 2, 3, 4]);
@@ -658,8 +558,10 @@ impl<'a, T> SliceRbRefMut<'a, T> {
     /// ```
     pub fn as_mut_slices(&mut self, start: isize) -> (&mut [T], &mut [T]) {
         // SAFETY:
-        // The constructors ensure that `self.data.len() > 0 && self.data.len() <= isize::MAX`.
-        unsafe { inner::as_mut_slices(start, self.data) }
+        // * All constructors ensure that the length of `vec` is greater than `0`.
+        // * All constructors and other methods which modify the length ensure
+        // that the length is less than or equal to `isize::MAX`.
+        unsafe { inner::as_mut_slices(start, &mut self.vec) }
     }
 
     /// Returns two mutable slices of data in the ring buffer
@@ -667,7 +569,7 @@ impl<'a, T> SliceRbRefMut<'a, T> {
     ///
     /// * `start` - The starting index
     /// * `len` - The length of data to read. If `len` is greater than the
-    /// capacity of the ring buffer, then that capacity will be used instead.
+    /// length of the ring buffer, then that length will be used instead.
     ///
     /// # Returns
     ///
@@ -683,9 +585,13 @@ impl<'a, T> SliceRbRefMut<'a, T> {
     /// # Example
     ///
     /// ```
-    /// # use slice_ring_buf::SliceRbRefMut;
-    /// let mut data = [1u32, 2, 3, 4];
-    /// let mut rb = SliceRbRefMut::new(&mut data[..]);
+    /// # use core::num::NonZeroUsize;
+    /// # use slice_ring_buf::SliceRB;
+    /// let mut rb = SliceRB::<u32>::new(NonZeroUsize::new(4).unwrap(), 0);
+    /// rb[0] = 1;
+    /// rb[1] = 2;
+    /// rb[2] = 3;
+    /// rb[3] = 4;
     ///
     /// let (s1, s2) = rb.as_mut_slices_len(-4, 3);
     /// assert_eq!(s1, &mut [1, 2, 3]);
@@ -697,8 +603,10 @@ impl<'a, T> SliceRbRefMut<'a, T> {
     /// ```
     pub fn as_mut_slices_len(&mut self, start: isize, len: usize) -> (&mut [T], &mut [T]) {
         // SAFETY:
-        // The constructors ensure that `self.data.len() > 0 && self.data.len() <= isize::MAX`.
-        unsafe { inner::as_mut_slices_len(start, len, self.data) }
+        // * All constructors ensure that the length of `vec` is greater than `0`.
+        // * All constructors and other methods which modify the length ensure
+        // that the length is less than or equal to `isize::MAX`.
+        unsafe { inner::as_mut_slices_len(start, len, &mut self.vec) }
     }
 
     /// Returns two mutable slices of data in the ring buffer
@@ -725,9 +633,13 @@ impl<'a, T> SliceRbRefMut<'a, T> {
     /// # Example
     ///
     /// ```
-    /// # use slice_ring_buf::SliceRbRefMut;
-    /// let mut data = [1u32, 2, 3, 4];
-    /// let mut rb = SliceRbRefMut::new(&mut data[..]);
+    /// # use core::num::NonZeroUsize;
+    /// # use slice_ring_buf::SliceRB;
+    /// let mut rb = SliceRB::<u32>::new(NonZeroUsize::new(4).unwrap(), 0);
+    /// rb[0] = 1;
+    /// rb[1] = 2;
+    /// rb[2] = 3;
+    /// rb[3] = 4;
     ///
     /// let (s1, s2) = rb.as_mut_slices_latest(-4, 3);
     /// assert_eq!(s1, &mut [1, 2, 3]);
@@ -739,8 +651,10 @@ impl<'a, T> SliceRbRefMut<'a, T> {
     /// ```
     pub fn as_mut_slices_latest(&mut self, start: isize, len: usize) -> (&mut [T], &mut [T]) {
         // SAFETY:
-        // The constructors ensure that `self.data.len() > 0 && self.data.len() <= isize::MAX`.
-        unsafe { inner::as_mut_slices_latest(start, len, self.data) }
+        // * All constructors ensure that the length of `vec` is greater than `0`.
+        // * All constructors and other methods which modify the length ensure
+        // that the length is less than or equal to `isize::MAX`.
+        unsafe { inner::as_mut_slices_latest(start, len, &mut self.vec) }
     }
 
     /// Returns all the data in the buffer. The starting index will
@@ -749,15 +663,19 @@ impl<'a, T> SliceRbRefMut<'a, T> {
     /// # Example
     ///
     /// ```
-    /// # use slice_ring_buf::SliceRbRefMut;
-    /// let mut data = [1u32, 2, 3, 4];
-    /// let mut rb = SliceRbRefMut::new(&mut data[..]);
+    /// # use core::num::NonZeroUsize;
+    /// # use slice_ring_buf::SliceRB;
+    /// let mut rb = SliceRB::<u32>::new(NonZeroUsize::new(4).unwrap(), 0);
+    /// rb[0] = 1;
+    /// rb[1] = 2;
+    /// rb[2] = 3;
+    /// rb[3] = 4;
     ///
     /// let raw_data = rb.raw_data();
     /// assert_eq!(raw_data, &[1u32, 2, 3, 4]);
     /// ```
     pub fn raw_data(&self) -> &[T] {
-        self.data
+        &self.vec[..]
     }
 
     /// Returns all the data in the buffer as mutable. The starting
@@ -766,57 +684,71 @@ impl<'a, T> SliceRbRefMut<'a, T> {
     /// # Example
     ///
     /// ```
-    /// # use slice_ring_buf::SliceRbRefMut;
-    /// let mut data = [1u32, 2, 3, 4];
-    /// let mut rb = SliceRbRefMut::new(&mut data[..]);
+    /// # use core::num::NonZeroUsize;
+    /// # use slice_ring_buf::SliceRB;
+    /// let mut rb = SliceRB::<u32>::new(NonZeroUsize::new(4).unwrap(), 0);
+    /// rb[0] = 1;
+    /// rb[1] = 2;
+    /// rb[2] = 3;
+    /// rb[3] = 4;
     ///
     /// let raw_data = rb.raw_data_mut();
     /// assert_eq!(raw_data, &mut [1u32, 2, 3, 4]);
     /// ```
     pub fn raw_data_mut(&mut self) -> &mut [T] {
-        self.data
+        &mut self.vec[..]
     }
 
     /// Returns an immutable reference the element at the index of type `isize`.
+    ///
+    /// This struct is gauranteed to have at least one element.
     ///
     /// # Performance
     ///
     /// Prefer to manipulate data in bulk with methods that return slices. If you
     /// need to index multiple elements one at a time, prefer to use
-    /// this over `SliceRbRef[i]` to reduce the number of
+    /// this over `SliceRB[i]` to reduce the number of
     /// modulo operations to perform.
     ///
     /// # Example
     ///
     /// ```
-    /// # use slice_ring_buf::SliceRbRefMut;
-    /// let mut data = [1u32, 2, 3, 4];
-    /// let mut rb = SliceRbRefMut::new(&mut data[..]);
+    /// # use core::num::NonZeroUsize;
+    /// # use slice_ring_buf::SliceRB;
+    /// let mut rb = SliceRB::<u32>::new(NonZeroUsize::new(4).unwrap(), 0);
+    /// rb[0] = 1;
+    /// rb[1] = 2;
+    /// rb[2] = 3;
+    /// rb[3] = 4;
     ///
     /// assert_eq!(*rb.get(-3), 2);
     /// ```
     #[inline]
     pub fn get(&self, i: isize) -> &T {
         // SAFETY:
-        // The constructors ensure that `self.data.len() > 0 && self.data.len() <= isize::MAX`.
-        unsafe { inner::get(i, self.data) }
+        // * All constructors ensure that the length of `vec` is greater than `0`.
+        // * All constructors and other methods which modify the length ensure
+        // that the length is less than or equal to `isize::MAX`.
+        unsafe { inner::get(i, &self.vec) }
     }
 
     /// Returns a mutable reference the element at the index of type `isize`.
+    ///
+    /// This struct is gauranteed to have at least one element.
     ///
     /// # Performance
     ///
     /// Prefer to manipulate data in bulk with methods that return slices. If you
     /// need to index multiple elements one at a time, prefer to use
-    /// this over `SliceRbRef[i]` to reduce the number of
+    /// this over `SliceRB[i]` to reduce the number of
     /// modulo operations to perform.
     ///
     /// # Example
     ///
     /// ```
-    /// # use slice_ring_buf::SliceRbRefMut;
-    /// let mut data = [1u32, 2, 3, 4];
-    /// let mut rb = SliceRbRefMut::new(&mut data[..]);
+    /// # use core::num::NonZeroUsize;
+    /// # use slice_ring_buf::SliceRB;
+    /// let mut rb = SliceRB::<u32>::new(NonZeroUsize::new(4).unwrap(), 0);
     ///
     /// *rb.get_mut(-3) = 5;
     ///
@@ -825,27 +757,35 @@ impl<'a, T> SliceRbRefMut<'a, T> {
     #[inline]
     pub fn get_mut(&mut self, i: isize) -> &mut T {
         // SAFETY:
-        // The constructors ensure that `self.data.len() > 0 && self.data.len() <= isize::MAX`.
-        unsafe { inner::get_mut(i, self.data) }
+        // * All constructors ensure that the length of `vec` is greater than `0`.
+        // * All constructors and other methods which modify the length ensure
+        // that the length is less than or equal to `isize::MAX`.
+        unsafe { inner::get_mut(i, &mut self.vec) }
     }
 
     /// Returns an immutable reference to the element at the index of type `isize`
     /// while also constraining the index `i`. This is more efficient than calling
     /// both methods individually.
     ///
+    /// This struct is gauranteed to have at least one element.
+    ///
     /// # Performance
     ///
     /// Prefer to manipulate data in bulk with methods that return slices. If you
     /// need to index multiple elements one at a time, prefer to use
-    /// this over `SliceRbRef[i]` to reduce the number of
+    /// this over `SliceRB[i]` to reduce the number of
     /// modulo operations to perform.
     ///
     /// # Example
     ///
     /// ```
-    /// # use slice_ring_buf::SliceRbRefMut;
-    /// let mut data = [1u32, 2, 3, 4];
-    /// let mut rb = SliceRbRefMut::new(&mut data[..]);
+    /// # use core::num::NonZeroUsize;
+    /// # use slice_ring_buf::SliceRB;
+    /// let mut rb = SliceRB::<u32>::new(NonZeroUsize::new(4).unwrap(), 0);
+    /// rb[0] = 1;
+    /// rb[1] = 2;
+    /// rb[2] = 3;
+    /// rb[3] = 4;
     ///
     /// let mut i = -3;
     /// assert_eq!(*rb.constrain_and_get(&mut i), 2);
@@ -854,27 +794,31 @@ impl<'a, T> SliceRbRefMut<'a, T> {
     #[inline]
     pub fn constrain_and_get(&self, i: &mut isize) -> &T {
         // SAFETY:
-        // The constructors ensure that `self.data.len() > 0 && self.data.len() <= isize::MAX`.
-        unsafe { inner::constrain_and_get(i, self.data) }
+        // * All constructors ensure that the length of `vec` is greater than `0`.
+        // * All constructors and other methods which modify the length ensure
+        // that the length is less than or equal to `isize::MAX`.
+        unsafe { inner::constrain_and_get(i, &self.vec) }
     }
 
     /// Returns a mutable reference to the element at the index of type `isize` as
     /// mutable while also constraining the index `i`. This is more efficient than
     /// calling both methods individually.
     ///
+    /// This struct is gauranteed to have at least one element.
+    ///
     /// # Performance
     ///
     /// Prefer to manipulate data in bulk with methods that return slices. If you
     /// need to index multiple elements one at a time, prefer to use
-    /// this over `SliceRbRef[i]` to reduce the number of
+    /// this over `SliceRBRef[i]` to reduce the number of
     /// modulo operations to perform.
     ///
     /// # Example
     ///
     /// ```
-    /// # use slice_ring_buf::SliceRbRefMut;
-    /// let mut data = [0u32; 4];
-    /// let mut rb = SliceRbRefMut::new(&mut data[..]);
+    /// # use core::num::NonZeroUsize;
+    /// # use slice_ring_buf::SliceRB;
+    /// let mut rb = SliceRB::<u32>::new(NonZeroUsize::new(4).unwrap(), 0);
     ///
     /// let mut i = -3;
     /// *rb.constrain_and_get_mut(&mut i) = 2;
@@ -885,15 +829,183 @@ impl<'a, T> SliceRbRefMut<'a, T> {
     #[inline]
     pub fn constrain_and_get_mut(&mut self, i: &mut isize) -> &mut T {
         // SAFETY:
-        // The constructors ensure that `self.data.len() > 0 && self.data.len() <= isize::MAX`.
-        unsafe { inner::constrain_and_get_mut(i, self.data) }
+        // * All constructors ensure that the length of `vec` is greater than `0`.
+        // * All constructors and other methods which modify the length ensure
+        // that the length is less than or equal to `isize::MAX`.
+        unsafe { inner::constrain_and_get_mut(i, &mut self.vec) }
     }
 }
 
-impl<'a, T: Clone + Copy> SliceRbRefMut<'a, T> {
+impl<T: Clone> SliceRB<T> {
+    /// Creates a new [`SliceRB`]. All data will be initialized with the given value.
+    ///
+    /// * `len` - The length of the ring buffer.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use core::num::NonZeroUsize;
+    /// # use slice_ring_buf::SliceRB;
+    /// let rb = SliceRB::<u32>::new(NonZeroUsize::new(3).unwrap(), 0);
+    ///
+    /// assert_eq!(rb.len().get(), 3);
+    ///
+    /// assert_eq!(rb[0], 0);
+    /// assert_eq!(rb[1], 0);
+    /// assert_eq!(rb[2], 0);
+    /// ```
+    ///
+    /// # Panics
+    ///
+    /// * This will panic if `len > isize::MAX`.
+    /// * This will panic if allocation fails due to being out of memory.
+    pub fn new(len: NonZeroUsize, value: T) -> Self {
+        assert!(len.get() <= isize::MAX as usize);
+
+        Self {
+            vec: alloc::vec![value; len.get()],
+        }
+    }
+
+    /// Creates a new [`SliceRB`] with an allocated capacity equal to exactly the
+    /// given length. All data will be initialized with the given value.
+    ///
+    /// * `len` - The length of the ring buffer.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use core::num::NonZeroUsize;
+    /// # use slice_ring_buf::SliceRB;
+    /// let rb = SliceRB::<u32>::new_exact(NonZeroUsize::new(3).unwrap(), 0);
+    ///
+    /// assert_eq!(rb.len().get(), 3);
+    ///
+    /// assert_eq!(rb[0], 0);
+    /// assert_eq!(rb[1], 0);
+    /// assert_eq!(rb[2], 0);
+    /// ```
+    ///
+    /// # Panics
+    ///
+    /// * This will panic if `len > isize::MAX`.
+    /// * This will panic if allocation fails due to being out of memory.
+    pub fn new_exact(len: NonZeroUsize, value: T) -> Self {
+        assert!(len.get() <= isize::MAX as usize);
+
+        let mut vec = Vec::new();
+        vec.reserve_exact(len.get());
+        vec.resize(len.get(), value);
+
+        Self { vec }
+    }
+
+    /// Creates a new [`SliceRB`], while reserving extra capacity for future changes
+    /// to `len`. All data from `[0..len)` will be initialized with the given value.
+    ///
+    /// * `len` - The length of the ring buffer.
+    /// * `capacity` - The allocated capacity of the ring buffer. If this is less than
+    /// `len`, then it will be ignored.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use core::num::NonZeroUsize;
+    /// # use slice_ring_buf::SliceRB;
+    /// let rb = SliceRB::<u32>::with_capacity(NonZeroUsize::new(3).unwrap(), 10, 0);
+    ///
+    /// assert_eq!(rb.len().get(), 3);
+    /// assert!(rb.capacity().get() >= 10);
+    /// ```
+    ///
+    /// # Panics
+    ///
+    /// * This will panic if `len > isize::MAX` or `capacity > isize::MAX`.
+    /// * This will panic if allocation fails due to being out of memory.
+    pub fn with_capacity(len: NonZeroUsize, capacity: usize, value: T) -> Self {
+        assert!(len.get() <= isize::MAX as usize);
+        assert!(capacity <= isize::MAX as usize);
+
+        let mut vec = Vec::<T>::with_capacity(core::cmp::max(len.get(), capacity));
+        vec.resize(len.get(), value);
+
+        Self { vec }
+    }
+
+    /// Sets the length of the ring buffer while clearing all values to the given value.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use core::num::NonZeroUsize;
+    /// # use slice_ring_buf::SliceRB;
+    /// let mut rb = SliceRB::<u32>::new(NonZeroUsize::new(2).unwrap(), 0);
+    /// rb[0] = 1;
+    /// rb[1] = 2;
+    ///
+    /// rb.clear_set_len(NonZeroUsize::new(4).unwrap(), 5);
+    ///
+    /// assert_eq!(rb.len().get(), 4);
+    ///
+    /// assert_eq!(rb[0], 5);
+    /// assert_eq!(rb[1], 5);
+    /// assert_eq!(rb[2], 5);
+    /// assert_eq!(rb[3], 5);
+    /// ```
+    ///
+    /// # Panics
+    ///
+    /// * This will panic if `len > isize::MAX`.
+    /// * This will panic if allocation fails due to being out of memory.
+    pub fn clear_set_len(&mut self, len: NonZeroUsize, value: T) {
+        assert!(len.get() <= isize::MAX as usize);
+
+        self.vec.clear();
+        self.vec.resize(len.get(), value);
+    }
+
+    /// Sets the length of the ring buffer.
+    ///
+    /// * If `len` is less than the current length, then the data
+    /// will be truncated.
+    /// * If `len` is larger than the current length, then all newly
+    /// allocated elements appended to the end will be initialized with the
+    /// given value.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use core::num::NonZeroUsize;
+    /// # use slice_ring_buf::SliceRB;
+    /// let mut rb = SliceRB::<u32>::new(NonZeroUsize::new(2).unwrap(), 0);
+    /// rb[0] = 1;
+    /// rb[1] = 2;
+    ///
+    /// rb.set_len(NonZeroUsize::new(4).unwrap(), 5);
+    ///
+    /// assert_eq!(rb.len().get(), 4);
+    ///
+    /// assert_eq!(rb[0], 1);
+    /// assert_eq!(rb[1], 2);
+    /// assert_eq!(rb[2], 5);
+    /// assert_eq!(rb[3], 5);
+    /// ```
+    ///
+    /// # Panics
+    ///
+    /// * This will panic if `len > isize::MAX`.
+    /// * This will panic if allocation fails due to being out of memory.
+    pub fn set_len(&mut self, len: NonZeroUsize, value: T) {
+        assert!(len.get() <= isize::MAX as usize);
+
+        self.vec.resize(len.get(), value);
+    }
+}
+
+impl<T: Clone + Copy> SliceRB<T> {
     /// Copies the data from the ring buffer starting from the index `start`
     /// into the given slice. If the length of `slice` is larger than the
-    /// capacity of the ring buffer, then the data will be reapeated until
+    /// length of the ring buffer, then the data will be reapeated until
     /// the given slice is filled.
     ///
     /// * `slice` - This slice to copy the data into.
@@ -906,9 +1018,13 @@ impl<'a, T: Clone + Copy> SliceRbRefMut<'a, T> {
     /// # Example
     ///
     /// ```
-    /// # use slice_ring_buf::SliceRbRefMut;
-    /// let mut data = [1u32, 2, 3, 4];
-    /// let mut rb = SliceRbRefMut::new(&mut data[..]);
+    /// # use core::num::NonZeroUsize;
+    /// # use slice_ring_buf::SliceRB;
+    /// let mut rb = SliceRB::<u32>::new(NonZeroUsize::new(4).unwrap(), 0);
+    /// rb[0] = 1;
+    /// rb[1] = 2;
+    /// rb[2] = 3;
+    /// rb[3] = 4;
     ///
     /// let mut read_buf = [0u32; 3];
     /// rb.read_into(&mut read_buf[..], -3);
@@ -920,8 +1036,10 @@ impl<'a, T: Clone + Copy> SliceRbRefMut<'a, T> {
     /// ```
     pub fn read_into(&self, slice: &mut [T], start: isize) {
         // SAFETY:
-        // The constructors ensure that `self.data.len() > 0 && self.data.len() <= isize::MAX`.
-        unsafe { inner::read_into(slice, start, self.data) }
+        // * All constructors ensure that the length of `vec` is greater than `0`.
+        // * All constructors and other methods which modify the length ensure
+        // that the length is less than or equal to `isize::MAX`.
+        unsafe { inner::read_into(slice, start, &self.vec) }
     }
 
     /// Copies data from the given slice into the ring buffer starting from
@@ -941,9 +1059,9 @@ impl<'a, T: Clone + Copy> SliceRbRefMut<'a, T> {
     /// # Example
     ///
     /// ```
-    /// # use slice_ring_buf::SliceRbRefMut;
-    /// let mut data = [0u32; 4];
-    /// let mut rb = SliceRbRefMut::new(&mut data[..]);
+    /// # use core::num::NonZeroUsize;
+    /// # use slice_ring_buf::SliceRB;
+    /// let mut rb = SliceRB::<u32>::new(NonZeroUsize::new(4).unwrap(), 0);
     ///
     /// let input = [1u32, 2, 3];
     /// rb.write_latest(&input[..], -3);
@@ -961,8 +1079,10 @@ impl<'a, T: Clone + Copy> SliceRbRefMut<'a, T> {
     /// ```
     pub fn write_latest(&mut self, slice: &[T], start: isize) {
         // SAFETY:
-        // The constructors ensure that `self.data.len() > 0 && self.data.len() <= isize::MAX`.
-        unsafe { inner::write_latest(slice, start, self.data) }
+        // * All constructors ensure that the length of `vec` is greater than `0`.
+        // * All constructors and other methods which modify the length ensure
+        // that the length is less than or equal to `isize::MAX`.
+        unsafe { inner::write_latest(slice, start, &mut self.vec) }
     }
 
     /// Copies data from two given slices into the ring buffer starting from
@@ -985,15 +1105,14 @@ impl<'a, T: Clone + Copy> SliceRbRefMut<'a, T> {
     ///
     /// ```
     /// # use core::num::NonZeroUsize;
-    /// # use slice_ring_buf::{SliceRB, SliceRbRefMut};
+    /// # use slice_ring_buf::SliceRB;
     /// let mut input_rb = SliceRB::<u32>::new(NonZeroUsize::new(4).unwrap(), 0);
     /// input_rb[0] = 1;
     /// input_rb[1] = 2;
     /// input_rb[2] = 3;
     /// input_rb[3] = 4;
     ///
-    /// let mut output_data = [0u32; 4];
-    /// let mut output_rb = SliceRbRefMut::new(&mut output_data[..]);
+    /// let mut output_rb = SliceRB::<u32>::new(NonZeroUsize::new(4).unwrap(), 0);
     /// // s1 == &[1, 2], s2 == &[]
     /// let (s1, s2) = input_rb.as_slices_len(0, 2);
     /// output_rb.write_latest_2(s1, s2, -3);
@@ -1002,8 +1121,7 @@ impl<'a, T: Clone + Copy> SliceRbRefMut<'a, T> {
     /// assert_eq!(output_rb[2], 2);
     /// assert_eq!(output_rb[3], 0);
     ///
-    /// let mut output_data = [0u32; 2];
-    /// let mut output_rb = SliceRbRefMut::new(&mut output_data[..]);
+    /// let mut output_rb = SliceRB::<u32>::new(NonZeroUsize::new(2).unwrap(), 0);
     /// // s1 == &[4],  s2 == &[1, 2, 3]
     /// let (s1, s2) = input_rb.as_slices_len(3, 4);
     /// // rb[1] = 4  ->  rb[0] = 1  ->  rb[1] = 2  ->  rb[0] = 3
@@ -1013,50 +1131,45 @@ impl<'a, T: Clone + Copy> SliceRbRefMut<'a, T> {
     /// ```
     pub fn write_latest_2(&mut self, first: &[T], second: &[T], start: isize) {
         // SAFETY:
-        // The constructors ensure that `self.data.len() > 0 && self.data.len() <= isize::MAX`.
-        unsafe { inner::write_latest_2(first, second, start, self.data) }
+        // * All constructors ensure that the length of `vec` is greater than `0`.
+        // * All constructors and other methods which modify the length ensure
+        // that the length is less than or equal to `isize::MAX`.
+        unsafe { inner::write_latest_2(first, second, start, &mut self.vec) }
     }
 }
 
-impl<'a, T> Into<SliceRbRef<'a, T>> for SliceRbRefMut<'a, T> {
-    fn into(self) -> SliceRbRef<'a, T> {
-        SliceRbRef { data: self.data }
-    }
-}
-
-impl<'a, T> core::ops::Index<isize> for SliceRbRef<'a, T> {
+impl<T> core::ops::Index<isize> for SliceRB<T> {
     type Output = T;
     fn index(&self, i: isize) -> &T {
         self.get(i)
     }
 }
 
-impl<'a, T> core::ops::Index<isize> for SliceRbRefMut<'a, T> {
-    type Output = T;
-    fn index(&self, i: isize) -> &T {
-        self.get(i)
-    }
-}
-
-impl<'a, T> core::ops::IndexMut<isize> for SliceRbRefMut<'a, T> {
+impl<T> core::ops::IndexMut<isize> for SliceRB<T> {
     fn index_mut(&mut self, i: isize) -> &mut T {
         self.get_mut(i)
     }
 }
 
-impl<'a, T: Debug> Debug for SliceRbRef<'a, T> {
+impl<T: Clone> Clone for SliceRB<T> {
+    fn clone(&self) -> Self {
+        Self {
+            vec: self.vec.clone(),
+        }
+    }
+}
+
+impl<T: Debug> Debug for SliceRB<T> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        let mut f = f.debug_struct("SliceRbRef");
-        f.field("data", &self.data);
+        let mut f = f.debug_struct("SliceRB");
+        f.field("vec", &self.vec);
         f.finish()
     }
 }
 
-impl<'a, T: Debug> Debug for SliceRbRefMut<'a, T> {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        let mut f = f.debug_struct("SliceRbRefMut");
-        f.field("data", &self.data);
-        f.finish()
+impl<T> Into<Vec<T>> for SliceRB<T> {
+    fn into(self) -> Vec<T> {
+        self.vec
     }
 }
 
@@ -1065,19 +1178,73 @@ mod tests {
     use super::*;
 
     #[test]
-    fn slice_ring_buf_ref_initialize() {
-        let mut data = [0.0; 4];
-        let ring_buf = SliceRbRef::new(&mut data);
+    fn slice_ring_buf_initialize() {
+        let ring_buf = SliceRB::<f32>::new(NonZeroUsize::new(3).unwrap(), 0.0);
 
-        assert_eq!(&ring_buf.data[..], &[0.0, 0.0, 0.0, 0.0]);
+        assert_eq!(&ring_buf.vec[..], &[0.0, 0.0, 0.0]);
     }
 
     #[test]
-    fn slice_ring_buf_ref_constrain() {
-        let mut data = [0.0; 4];
-        let ring_buf = SliceRbRef::new(&mut data);
+    fn slice_ring_buf_initialize_uninit() {
+        unsafe {
+            let ring_buf = SliceRB::<f32>::new_uninit(NonZeroUsize::new(3).unwrap());
 
-        assert_eq!(&ring_buf.data[..], &[0.0, 0.0, 0.0, 0.0]);
+            assert_eq!(ring_buf.vec.len(), 3);
+        }
+    }
+
+    #[test]
+    fn slice_ring_buf_clear_set_len() {
+        let mut ring_buf = SliceRB::<f32>::new(NonZeroUsize::new(4).unwrap(), 0.0);
+        ring_buf[0] = 1.0;
+        ring_buf[1] = 2.0;
+        ring_buf[2] = 3.0;
+        ring_buf[3] = 4.0;
+
+        ring_buf.clear_set_len(NonZeroUsize::new(8).unwrap(), 0.0);
+        assert_eq!(ring_buf.vec.as_slice(), &[0.0; 8]);
+    }
+
+    #[test]
+    fn slice_ring_buf_set_len() {
+        let mut ring_buf = SliceRB::<f32>::new(NonZeroUsize::new(4).unwrap(), 0.0);
+        ring_buf[0] = 1.0;
+        ring_buf[1] = 2.0;
+        ring_buf[2] = 3.0;
+        ring_buf[3] = 4.0;
+
+        ring_buf.set_len(NonZeroUsize::new(1).unwrap(), 0.0);
+        assert_eq!(ring_buf.vec.as_slice(), &[1.0]);
+
+        ring_buf.set_len(NonZeroUsize::new(4).unwrap(), 0.0);
+        assert_eq!(ring_buf.vec.as_slice(), &[1.0, 0.0, 0.0, 0.0]);
+    }
+
+    #[test]
+    fn slice_ring_buf_set_len_uninit() {
+        let mut ring_buf = SliceRB::<f32>::new(NonZeroUsize::new(4).unwrap(), 0.0);
+        ring_buf[0] = 1.0;
+        ring_buf[1] = 2.0;
+        ring_buf[2] = 3.0;
+        ring_buf[3] = 4.0;
+
+        unsafe {
+            ring_buf.set_len_uninit(NonZeroUsize::new(1).unwrap());
+        }
+
+        assert_eq!(ring_buf.vec.as_slice(), &[1.0]);
+        assert_eq!(ring_buf.vec.len(), 1);
+
+        unsafe {
+            ring_buf.set_len_uninit(NonZeroUsize::new(4).unwrap());
+        }
+
+        assert_eq!(ring_buf.vec.len(), 4);
+    }
+
+    #[test]
+    fn slice_ring_buf_constrain() {
+        let ring_buf = SliceRB::<f32>::new(NonZeroUsize::new(4).unwrap(), 0.0);
 
         assert_eq!(ring_buf.constrain(-8), 0);
         assert_eq!(ring_buf.constrain(-7), 1);
@@ -1099,9 +1266,9 @@ mod tests {
     }
 
     #[test]
-    fn slice_ring_buf_ref_index() {
-        let mut data = [0.0f32, 1.0, 2.0, 3.0];
-        let ring_buf = SliceRbRef::new(&mut data);
+    fn slice_ring_buf_index() {
+        let mut ring_buf = SliceRB::<f32>::new(NonZeroUsize::new(4).unwrap(), 0.0);
+        ring_buf.write_latest(&[0.0f32, 1.0, 2.0, 3.0], 0);
 
         let ring_buf = &ring_buf;
 
@@ -1125,9 +1292,9 @@ mod tests {
     }
 
     #[test]
-    fn slice_ring_buf_ref_index_mut() {
-        let mut data = [0.0f32, 1.0, 2.0, 3.0];
-        let mut ring_buf = SliceRbRefMut::new(&mut data);
+    fn slice_ring_buf_index_mut() {
+        let mut ring_buf = SliceRB::<f32>::new(NonZeroUsize::new(4).unwrap(), 0.0);
+        ring_buf.write_latest(&[0.0f32, 1.0, 2.0, 3.0], 0);
 
         assert_eq!(&mut ring_buf[-8], &mut 0.0);
         assert_eq!(&mut ring_buf[-7], &mut 1.0);
@@ -1149,9 +1316,9 @@ mod tests {
     }
 
     #[test]
-    fn slice_ring_buf_ref_as_slices() {
-        let mut data = [1.0f32, 2.0, 3.0, 4.0];
-        let ring_buf = SliceRbRef::new(&mut data);
+    fn slice_ring_buf_as_slices() {
+        let mut ring_buf = SliceRB::<f32>::new(NonZeroUsize::new(4).unwrap(), 0.0);
+        ring_buf.write_latest(&[1.0f32, 2.0, 3.0, 4.0], 0);
 
         let (s1, s2) = ring_buf.as_slices(0);
         assert_eq!(s1, &[1.0, 2.0, 3.0, 4.0]);
@@ -1175,9 +1342,9 @@ mod tests {
     }
 
     #[test]
-    fn slice_ring_buf_ref_as_mut_slices() {
-        let mut data = [1.0f32, 2.0, 3.0, 4.0];
-        let mut ring_buf = SliceRbRefMut::new(&mut data);
+    fn slice_ring_buf_as_mut_slices() {
+        let mut ring_buf = SliceRB::<f32>::new(NonZeroUsize::new(4).unwrap(), 0.0);
+        ring_buf.write_latest(&[1.0f32, 2.0, 3.0, 4.0], 0);
 
         let (s1, s2) = ring_buf.as_mut_slices(0);
         assert_eq!(s1, &[1.0, 2.0, 3.0, 4.0]);
@@ -1221,117 +1388,112 @@ mod tests {
     #[repr(C, align(64))]
     struct Aligned64([f32; 8]);
 
-    #[repr(C, align(32))]
-    struct Aligned324([f32; 4]);
-
     #[test]
-    fn slice_ring_buf_ref_write_latest_2() {
-        let mut data = Aligned324([0.0f32; 4]);
-        let mut ring_buf = SliceRbRefMut::new(&mut data.0);
+    fn slice_ring_buf_write_latest_2() {
+        let mut ring_buf = SliceRB::<f32>::new(NonZeroUsize::new(4).unwrap(), 0.0);
 
         ring_buf.write_latest_2(&[], &[0.0, 1.0, 2.0, 3.0, 4.0], 1);
-        assert_eq!(ring_buf.data, &[3.0, 4.0, 1.0, 2.0]);
+        assert_eq!(ring_buf.vec.as_slice(), &[3.0, 4.0, 1.0, 2.0]);
         ring_buf.write_latest_2(&[-1.0], &[0.0, 1.0, 2.0, 3.0, 4.0], 1);
-        assert_eq!(ring_buf.data, &[2.0, 3.0, 4.0, 1.0]);
+        assert_eq!(ring_buf.vec.as_slice(), &[2.0, 3.0, 4.0, 1.0]);
         ring_buf.write_latest_2(&[-2.0, -1.0], &[0.0, 1.0, 2.0, 3.0, 4.0], 1);
-        assert_eq!(ring_buf.data, &[1.0, 2.0, 3.0, 4.0]);
+        assert_eq!(ring_buf.vec.as_slice(), &[1.0, 2.0, 3.0, 4.0]);
         ring_buf.write_latest_2(&[-2.0, -1.0], &[0.0, 1.0], 3);
-        assert_eq!(ring_buf.data, &[-1.0, 0.0, 1.0, -2.0]);
+        assert_eq!(ring_buf.vec.as_slice(), &[-1.0, 0.0, 1.0, -2.0]);
         ring_buf.write_latest_2(&[0.0, 1.0], &[2.0], 3);
-        assert_eq!(ring_buf.data, &[1.0, 2.0, 1.0, 0.0]);
+        assert_eq!(ring_buf.vec.as_slice(), &[1.0, 2.0, 1.0, 0.0]);
         ring_buf.write_latest_2(&[1.0, 2.0, 3.0, 4.0], &[], 0);
-        assert_eq!(ring_buf.data, &[1.0, 2.0, 3.0, 4.0]);
+        assert_eq!(ring_buf.vec.as_slice(), &[1.0, 2.0, 3.0, 4.0]);
         ring_buf.write_latest_2(&[1.0, 2.0], &[], 2);
-        assert_eq!(ring_buf.data, &[1.0, 2.0, 1.0, 2.0]);
+        assert_eq!(ring_buf.vec.as_slice(), &[1.0, 2.0, 1.0, 2.0]);
         ring_buf.write_latest_2(&[], &[], 2);
-        assert_eq!(ring_buf.data, &[1.0, 2.0, 1.0, 2.0]);
+        assert_eq!(ring_buf.vec.as_slice(), &[1.0, 2.0, 1.0, 2.0]);
         ring_buf.write_latest_2(&[1.0, 2.0, 3.0, 4.0, 5.0], &[], 1);
-        assert_eq!(ring_buf.data, &[4.0, 5.0, 2.0, 3.0]);
+        assert_eq!(ring_buf.vec.as_slice(), &[4.0, 5.0, 2.0, 3.0]);
         ring_buf.write_latest_2(&[1.0, 2.0, 3.0, 4.0, 5.0], &[6.0], 2);
-        assert_eq!(ring_buf.data, &[3.0, 4.0, 5.0, 6.0]);
+        assert_eq!(ring_buf.vec.as_slice(), &[3.0, 4.0, 5.0, 6.0]);
         ring_buf.write_latest_2(&[1.0, 2.0, 3.0, 4.0, 5.0], &[6.0, 7.0], 2);
-        assert_eq!(ring_buf.data, &[7.0, 4.0, 5.0, 6.0]);
+        assert_eq!(ring_buf.vec.as_slice(), &[7.0, 4.0, 5.0, 6.0]);
         ring_buf.write_latest_2(&[1.0, 2.0, 3.0, 4.0, 5.0], &[6.0, 7.0, 8.0, 9.0, 10.0], 3);
-        assert_eq!(ring_buf.data, &[10.0, 7.0, 8.0, 9.0]);
+        assert_eq!(ring_buf.vec.as_slice(), &[10.0, 7.0, 8.0, 9.0]);
     }
 
     #[test]
-    fn slice_ring_buf_ref_write_latest() {
-        let mut data = Aligned324([0.0f32; 4]);
-        let mut ring_buf = SliceRbRefMut::new(&mut data.0);
+    fn slice_ring_buf_write_latest() {
+        let mut ring_buf = SliceRB::<f32>::new(NonZeroUsize::new(4).unwrap(), 0.0);
 
         let input = [0.0f32, 1.0, 2.0, 3.0];
 
         ring_buf.write_latest(&input, 0);
-        assert_eq!(ring_buf.data, &[0.0, 1.0, 2.0, 3.0]);
+        assert_eq!(ring_buf.vec.as_slice(), &[0.0, 1.0, 2.0, 3.0]);
         ring_buf.write_latest(&input, 1);
-        assert_eq!(ring_buf.data, &[3.0, 0.0, 1.0, 2.0]);
+        assert_eq!(ring_buf.vec.as_slice(), &[3.0, 0.0, 1.0, 2.0]);
         ring_buf.write_latest(&input, 2);
-        assert_eq!(ring_buf.data, &[2.0, 3.0, 0.0, 1.0]);
+        assert_eq!(ring_buf.vec.as_slice(), &[2.0, 3.0, 0.0, 1.0]);
         ring_buf.write_latest(&input, 3);
-        assert_eq!(ring_buf.data, &[1.0, 2.0, 3.0, 0.0]);
+        assert_eq!(ring_buf.vec.as_slice(), &[1.0, 2.0, 3.0, 0.0]);
         ring_buf.write_latest(&input, 4);
-        assert_eq!(ring_buf.data, &[0.0, 1.0, 2.0, 3.0]);
+        assert_eq!(ring_buf.vec.as_slice(), &[0.0, 1.0, 2.0, 3.0]);
 
         let input = [0.0f32, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0];
 
         ring_buf.write_latest(&input, 0);
-        assert_eq!(ring_buf.data, &[4.0, 5.0, 6.0, 7.0]);
+        assert_eq!(ring_buf.vec.as_slice(), &[4.0, 5.0, 6.0, 7.0]);
         ring_buf.write_latest(&input, 1);
-        assert_eq!(ring_buf.data, &[7.0, 4.0, 5.0, 6.0]);
+        assert_eq!(ring_buf.vec.as_slice(), &[7.0, 4.0, 5.0, 6.0]);
         ring_buf.write_latest(&input, 2);
-        assert_eq!(ring_buf.data, &[6.0, 7.0, 4.0, 5.0]);
+        assert_eq!(ring_buf.vec.as_slice(), &[6.0, 7.0, 4.0, 5.0]);
         ring_buf.write_latest(&input, 3);
-        assert_eq!(ring_buf.data, &[5.0, 6.0, 7.0, 4.0]);
+        assert_eq!(ring_buf.vec.as_slice(), &[5.0, 6.0, 7.0, 4.0]);
         ring_buf.write_latest(&input, 4);
-        assert_eq!(ring_buf.data, &[4.0, 5.0, 6.0, 7.0]);
+        assert_eq!(ring_buf.vec.as_slice(), &[4.0, 5.0, 6.0, 7.0]);
 
         let input = [0.0f32, 1.0];
 
         ring_buf.write_latest(&input, 0);
-        assert_eq!(ring_buf.data, &[0.0, 1.0, 6.0, 7.0]);
+        assert_eq!(ring_buf.vec.as_slice(), &[0.0, 1.0, 6.0, 7.0]);
         ring_buf.write_latest(&input, 1);
-        assert_eq!(ring_buf.data, &[0.0, 0.0, 1.0, 7.0]);
+        assert_eq!(ring_buf.vec.as_slice(), &[0.0, 0.0, 1.0, 7.0]);
         ring_buf.write_latest(&input, 2);
-        assert_eq!(ring_buf.data, &[0.0, 0.0, 0.0, 1.0]);
+        assert_eq!(ring_buf.vec.as_slice(), &[0.0, 0.0, 0.0, 1.0]);
         ring_buf.write_latest(&input, 3);
-        assert_eq!(ring_buf.data, &[1.0, 0.0, 0.0, 0.0]);
+        assert_eq!(ring_buf.vec.as_slice(), &[1.0, 0.0, 0.0, 0.0]);
         ring_buf.write_latest(&input, 4);
-        assert_eq!(ring_buf.data, &[0.0, 1.0, 0.0, 0.0]);
+        assert_eq!(ring_buf.vec.as_slice(), &[0.0, 1.0, 0.0, 0.0]);
 
         let aligned_input = Aligned1([8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0]);
         ring_buf.write_latest(&aligned_input.0, 0);
-        assert_eq!(ring_buf.data, &[12.0, 13.0, 14.0, 15.0]);
+        assert_eq!(ring_buf.vec.as_slice(), &[12.0, 13.0, 14.0, 15.0]);
 
         let aligned_input = Aligned2([8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0]);
         ring_buf.write_latest(&aligned_input.0, 0);
-        assert_eq!(ring_buf.data, &[12.0, 13.0, 14.0, 15.0]);
+        assert_eq!(ring_buf.vec.as_slice(), &[12.0, 13.0, 14.0, 15.0]);
 
         let aligned_input = Aligned4([8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0]);
         ring_buf.write_latest(&aligned_input.0, 0);
-        assert_eq!(ring_buf.data, &[12.0, 13.0, 14.0, 15.0]);
+        assert_eq!(ring_buf.vec.as_slice(), &[12.0, 13.0, 14.0, 15.0]);
 
         let aligned_input = Aligned8([8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0]);
         ring_buf.write_latest(&aligned_input.0, 0);
-        assert_eq!(ring_buf.data, &[12.0, 13.0, 14.0, 15.0]);
+        assert_eq!(ring_buf.vec.as_slice(), &[12.0, 13.0, 14.0, 15.0]);
 
         let aligned_input = Aligned16([8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0]);
         ring_buf.write_latest(&aligned_input.0, 0);
-        assert_eq!(ring_buf.data, &[12.0, 13.0, 14.0, 15.0]);
+        assert_eq!(ring_buf.vec.as_slice(), &[12.0, 13.0, 14.0, 15.0]);
 
         let aligned_input = Aligned32([8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0]);
         ring_buf.write_latest(&aligned_input.0, 0);
-        assert_eq!(ring_buf.data, &[12.0, 13.0, 14.0, 15.0]);
+        assert_eq!(ring_buf.vec.as_slice(), &[12.0, 13.0, 14.0, 15.0]);
 
         let aligned_input = Aligned64([8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0]);
         ring_buf.write_latest(&aligned_input.0, 0);
-        assert_eq!(ring_buf.data, &[12.0, 13.0, 14.0, 15.0]);
+        assert_eq!(ring_buf.vec.as_slice(), &[12.0, 13.0, 14.0, 15.0]);
     }
 
     #[test]
-    fn slice_ring_buf_ref_as_slices_len() {
-        let mut data = [0.0f32, 1.0, 2.0, 3.0];
-        let ring_buf = SliceRbRef::new(&mut data);
+    fn slice_ring_buf_as_slices_len() {
+        let mut ring_buf = SliceRB::<f32>::new(NonZeroUsize::new(4).unwrap(), 0.0);
+        ring_buf.write_latest(&[0.0, 1.0, 2.0, 3.0], 0);
 
         let (s1, s2) = ring_buf.as_slices_len(0, 0);
         assert_eq!(s1, &[]);
@@ -1430,9 +1592,9 @@ mod tests {
     }
 
     #[test]
-    fn slice_ring_buf_ref_as_slices_latest() {
-        let mut data = [0.0f32, 1.0, 2.0, 3.0];
-        let ring_buf = SliceRbRefMut::new(&mut data);
+    fn slice_ring_buf_as_slices_latest() {
+        let mut ring_buf = SliceRB::<f32>::new(NonZeroUsize::new(4).unwrap(), 0.0);
+        ring_buf.write_latest(&[0.0, 1.0, 2.0, 3.0], 0);
 
         let (s1, s2) = ring_buf.as_slices_latest(0, 0);
         assert_eq!(s1, &[]);
@@ -1576,9 +1738,9 @@ mod tests {
     }
 
     #[test]
-    fn slice_ring_buf_ref_as_mut_slices_len() {
-        let mut data = [0.0f32, 1.0, 2.0, 3.0];
-        let mut ring_buf = SliceRbRefMut::new(&mut data);
+    fn slice_ring_buf_as_mut_slices_len() {
+        let mut ring_buf = SliceRB::<f32>::new(NonZeroUsize::new(4).unwrap(), 0.0);
+        ring_buf.write_latest(&[0.0, 1.0, 2.0, 3.0], 0);
 
         let (s1, s2) = ring_buf.as_mut_slices_len(0, 0);
         assert_eq!(s1, &[]);
@@ -1677,9 +1839,9 @@ mod tests {
     }
 
     #[test]
-    fn slice_ring_buf_ref_as_mut_slices_latest() {
-        let mut data = [0.0f32, 1.0, 2.0, 3.0];
-        let mut ring_buf = SliceRbRefMut::new(&mut data);
+    fn slice_ring_buf_as_mut_slices_latest() {
+        let mut ring_buf = SliceRB::<f32>::new(NonZeroUsize::new(4).unwrap(), 0.0);
+        ring_buf.write_latest(&[0.0, 1.0, 2.0, 3.0], 0);
 
         let (s1, s2) = ring_buf.as_mut_slices_latest(0, 0);
         assert_eq!(s1, &mut []);
@@ -1823,9 +1985,9 @@ mod tests {
     }
 
     #[test]
-    fn slice_ring_buf_ref_read_into() {
-        let mut data = Aligned324([0.0f32, 1.0, 2.0, 3.0]);
-        let ring_buf = SliceRbRef::new(&mut data.0);
+    fn slice_ring_buf_read_into() {
+        let mut ring_buf = SliceRB::<f32>::new(NonZeroUsize::new(4).unwrap(), 0.0);
+        ring_buf.write_latest(&[0.0, 1.0, 2.0, 3.0], 0);
 
         let mut output = [0.0f32; 4];
 

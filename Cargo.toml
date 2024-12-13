@@ -1,16 +1,24 @@
 [package]
 name = "slice_ring_buf"
-version = "0.2.7"
-authors = ["Billy Messenger <https://github.com/BillyDM>"]
+version = "0.3.0"
+authors = ["Billy Messenger <60663878+BillyDM@users.noreply.github.com>"]
 license = "MIT"
 keywords = ["ring", "circular", "buffer", "dsp"]
-categories = ["data-structures"]
-edition = "2018"
+categories = ["data-structures", "no-std", "no-std::no-alloc"]
+edition = "2021"
 description = "A ring buffer implementation optimized for working with slices"
 repository = "https://github.com/BillyDM/slice_ring_buf"
 documentation = "https://docs.rs/slice_ring_buf"
 readme = "README.md"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[badges]
+maintenance = { status = "passively-maintained" }
+
+[features]
+default = ["alloc"]
+# Enables the `SliceRB` struct containing owned data on the heap.
+alloc = []
 
 [dependencies]
